@@ -2,5 +2,16 @@
 name = "rustyvulkan"
 version = "0.1.0"
 authors = ["GRBurst <JuliusE89@gmail.com>"]
+publish = false
 
 [dependencies]
+# vulkano = { git = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano" }
+# vulkano-shader-derive = { git = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-shader-derive" }
+# vulkano-win = { git = "https://github.com/vulkano-rs/vulkano/tree/master/vulkano-win" }
+vulkano = { path = "../vulkano/vulkano" }
+vulkano-shader-derive = { path = "../vulkano/vulkano-shader-derive" }
+vulkano-win = { path = "../vulkano/vulkano-win" }
+cgmath = "0.14.1"
+image = "0.14.0"
+winit = "0.7.0"
+time = "0.1.37"
