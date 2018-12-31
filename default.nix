@@ -4,5 +4,5 @@ with nixpkgs;
 
 pkgs.stdenv.mkDerivation {
   name = "rustyvulkan";
-  buildInputs = [ cargo python3 ];
+  buildInputs = [ cargo cmake python3 ];
 }
