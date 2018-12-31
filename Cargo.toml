@@ -1,7 +1,7 @@
 [package]
 name = "rustyvulkan"
 version = "0.1.0"
-authors = ["GRBurst <JuliusE89@gmail.com>"]
+authors = [ "Adrian <adrian.niewiadomski@rwth-aachen.de>", "GRBurst <GRBurst@protonmail.com>" ]
 publish = false
 
 [dependencies]

@@ -26,4 +26,5 @@ fn main() {
     };
 
     let queue = queues.next().unwrap();
+
 }
