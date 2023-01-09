@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+  "teapot",
+  "vulkan_base",
+]
