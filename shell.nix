@@ -4,6 +4,11 @@ let
 in
 pkgs.mkShell {
 
+  nativeBuildInputs = with pkgs; [
+    pkg-config
+    fontconfig
+  ];
+
   buildInputs = with pkgs; [
     cargo
     cmake
@@ -11,9 +16,11 @@ pkgs.mkShell {
     vulkan-headers
     vulkan-loader
     vulkan-tools
+    xorg.libX11
+    xorg.libXcursor
+    xorg.libXrandr
+    xorg.libXi
   ];
-
-  LD_LIBRARY_PATH="";
 
   shellHook = ''
     echo "--- Welcome to ${pname}! ---"
