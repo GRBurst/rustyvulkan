@@ -1,9 +1,3 @@
-extern crate vulkano;
-extern crate bytemuck;
-extern crate core;
-extern crate winit;
-extern crate vulkano_win;
-
 // use bytemuck::{Pod, Zeroable};
 // use vulkano::VulkanLibrary;
 // use vulkano::instance::{Instance, InstanceCreateInfo};
@@ -49,7 +43,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-fn main() {
+pub fn run() {
     // The first step of any Vulkan program is to create an instance.
     //
     // When we create an instance, we have to pass a list of extensions that we want to enable.
