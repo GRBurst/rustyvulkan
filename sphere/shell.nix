@@ -12,18 +12,22 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     cargo
     cmake
-    python3
     vulkan-headers
     vulkan-loader
     vulkan-tools
+    vulkan-validation-layers
     xorg.libX11
     xorg.libXcursor
     xorg.libXrandr
     xorg.libXi
+
+    libxkbcommon
+
+    blender
   ];
 
   shellHook = ''
     echo "--- Welcome to ${pname}! ---"
-    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HOME/.nix-profile/lib/:${pkgs.vulkan-loader}/lib"
+    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HOME/.nix-profile/lib/:${pkgs.vulkan-loader}/lib:${pkgs.libxkbcommon}/lib"
   '';
 }
