@@ -1625,6 +1625,7 @@ impl VulkanApp {
         let positions = mesh.positions.as_slice();
         let coords = mesh.texcoords.as_slice();
         let vertex_count = mesh.positions.len() / 3;
+        let normals = mesh.normals.as_slice();
 
         let mut vertices = Vec::with_capacity(vertex_count);
         for i in 0..vertex_count {
@@ -1633,11 +1634,15 @@ impl VulkanApp {
             let z = positions[i * 3 + 2];
             let u = coords[i * 2];
             let v = coords[i * 2 + 1];
+            let nx = normals[i * 3];
+            let ny = normals[i * 3 + 1];
+            let nz = normals[i * 3 + 2];
 
             let vertex = Vertex {
                 pos: [x, y, z],
                 color: [1.0, 1.0, 1.0],
                 coords: [u, v],
+                normal: [nx, ny, nz],
             };
             vertices.push(vertex);
         }
@@ -2245,7 +2250,7 @@ impl VulkanApp {
             view: Matrix4::look_at_rh(
                 self.camera.position(),
                 Point3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.0, 1.0, 0.0),
+                Vector3::new(0.0, 0.0, -1.0),
             ),
             proj: math::perspective(Deg(45.0), aspect, 0.1, 1000.0),
         };
@@ -2352,6 +2357,7 @@ struct Vertex {
     pos: [f32; 3],
     color: [f32; 3],
     coords: [f32; 2],
+    normal: [f32; 3],
 }
 
 impl Vertex {
@@ -2362,7 +2368,7 @@ impl Vertex {
             .input_rate(vk::VertexInputRate::VERTEX)
     }
 
-    fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 3] {
+    fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 4] {
         let position_desc = vk::VertexInputAttributeDescription::default()
             .binding(0)
             .location(0)
@@ -2378,7 +2384,12 @@ impl Vertex {
             .location(2)
             .format(vk::Format::R32G32_SFLOAT)
             .offset(offset_of!(Vertex, coords) as _);
-        [position_desc, color_desc, coords_desc]
+        let normals_desc = vk::VertexInputAttributeDescription::default()
+            .binding(0)
+            .location(3)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(offset_of!(Vertex, normal) as _);
+        [position_desc, color_desc, coords_desc, normals_desc]
     }
 }
 
