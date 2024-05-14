@@ -25,6 +25,8 @@ pkgs.mkShell {
     libxkbcommon
     glslang
 
+    shaderc
+
     blender
   ];
 
