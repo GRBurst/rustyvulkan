@@ -1,5 +1,5 @@
+{ pkgs ? import <nixpkgs> { } }:
 let
-  pkgs = import <nixpkgs> { };
   pname = "rustyvulkan";
 in
 pkgs.mkShell {
@@ -11,11 +11,12 @@ pkgs.mkShell {
 
   buildInputs = with pkgs; [
     cargo
-    cmake
+
     vulkan-headers
     vulkan-loader
     vulkan-tools
     vulkan-validation-layers
+
     xorg.libX11
     xorg.libXcursor
     xorg.libXrandr
@@ -23,11 +24,15 @@ pkgs.mkShell {
 
     libxkbcommon
 
+    shaderc
+    glslang
+
     blender
   ];
 
   shellHook = ''
     echo "--- Welcome to ${pname}! ---"
-    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HOME/.nix-profile/lib/:${pkgs.vulkan-loader}/lib:${pkgs.libxkbcommon}/lib"
+    export VK_LAYER_PATH="${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d"
+    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$HOME/.nix-profile/lib/:${pkgs.vulkan-loader}/lib:${pkgs.libxkbcommon}/lib:${pkgs.vulkan-validation-layers}/lib"
   '';
 }
