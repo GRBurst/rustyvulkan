@@ -1,9 +1,12 @@
-use cgmath::{Matrix4, Point3, Vector2, Vector3, Rad, InnerSpace};
+use crate::math;
+
+use cgmath::{Matrix4, Point3, Vector2, Vector3, Deg, Rad, InnerSpace};
 use std::f32::consts::PI;
 
 #[derive(Clone, Copy)]
 pub struct Camera {
     pub pos: Point3<f32>,
+    h_fov: Deg<f32>,
     near_plane: f32,
     far_plane: f32,
     horizontal_angle: f32,
@@ -59,14 +62,19 @@ impl Camera {
         self.vertical_angle = (self.vertical_angle + degree.y.0) % PI;
     }
 
+    pub fn get_projection_matrix(&self, aspect: f32) -> Matrix4<f32> {
+        math::perspective(self.h_fov, aspect, self.near_plane, self.far_plane)
+    }
+
 }
 
 impl Default for Camera {
     fn default() -> Self {
         Camera {
             pos: Point3::new(0.0, 1.0, 0.0),
+            h_fov: Deg(45.0),
             near_plane: 0.1,
-            far_plane: 100.0,
+            far_plane: 1000.0,
             horizontal_angle: PI,
             vertical_angle: 0.0,
         }
