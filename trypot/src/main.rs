@@ -12,7 +12,7 @@ use ash::{
     khr::{surface, swapchain as khr_swapchain},
     vk, Device, Entry, Instance,
 };
-use cgmath::{Deg, Matrix4, Point3, Vector3};
+use cgmath::{Deg, Matrix4, Vector2, Rad};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
     ffi::{CStr, CString},
@@ -2235,24 +2235,22 @@ impl VulkanApp {
             let delta = self.cursor_delta.take().unwrap();
             let x_ratio = delta[0] as f32 / self.swapchain_properties.extent.width as f32;
             let y_ratio = delta[1] as f32 / self.swapchain_properties.extent.height as f32;
-            let theta = x_ratio * 180.0_f32.to_radians();
-            let phi = y_ratio * 90.0_f32.to_radians();
-            self.camera.rotate(theta, phi);
+            let theta = Rad(x_ratio * 180.0_f32.to_radians());
+            let phi = Rad(-y_ratio * 90.0_f32.to_radians());
+            self.camera.rotate(Vector2::new(theta, phi));
         }
         if let Some(wheel_delta) = self.wheel_delta {
-            self.camera.forward(wheel_delta * 0.3);
+            self.camera.move_forward(wheel_delta * 0.3);
         }
 
         let aspect = self.swapchain_properties.extent.width as f32
             / self.swapchain_properties.extent.height as f32;
         let ubo = UniformBufferObject {
-            model: Matrix4::from_angle_x(Deg(270.0)),
-            view: Matrix4::look_at_rh(
-                self.camera.position(),
-                Point3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.0, 0.0, -1.0),
+            model: Matrix4::from_angle_x(Deg(0.0)),
+            view: self.camera.look_to(
+                self.camera.get_view_direction()
             ),
-            proj: math::perspective(Deg(45.0), aspect, 0.1, 1000.0),
+            proj: self.camera.get_projection_matrix(aspect),
         };
         let ubos = [ubo];
 
