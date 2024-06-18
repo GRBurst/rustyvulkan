@@ -12,7 +12,7 @@ use ash::{
     khr::{surface, swapchain as khr_swapchain},
     vk, Device, Entry, Instance,
 };
-use cgmath::{Deg, Matrix4, Point3, Vector3, Quaternion};
+use cgmath::{Deg, Matrix4, Point3, Vector3, Vector2, Rad};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
     ffi::{CStr, CString},
@@ -2235,27 +2235,23 @@ impl VulkanApp {
             let delta = self.cursor_delta.take().unwrap();
             let x_ratio = delta[0] as f32 / self.swapchain_properties.extent.width as f32;
             let y_ratio = delta[1] as f32 / self.swapchain_properties.extent.height as f32;
-            // let theta = x_ratio * 180.0_f32.to_radians();
-            let theta = 0.0_f32.to_radians();
-            let phi = y_ratio * 90.0_f32.to_radians();
-            println!("blub: {}, x_ratio: {}, y_ratio: {} => theta: {}, phi: {}", self.camera.blub, x_ratio, y_ratio, theta, phi);
-            self.camera.rotate(theta, phi);
-            self.camera.blub += x_ratio;
+            let theta = Rad(x_ratio * 180.0_f32.to_radians());
+            let phi = Rad(y_ratio * 90.0_f32.to_radians());
+            self.camera.rotate(Vector2::new(theta, phi));
         }
         if let Some(wheel_delta) = self.wheel_delta {
-            self.camera.forward(wheel_delta * 0.3);
+            if wheel_delta > 0.0 {
+                self.camera.move_forward(wheel_delta * 0.3);
+            } else {
+                self.camera.move_backward(wheel_delta * 0.3);
+            }
         }
 
         let aspect = self.swapchain_properties.extent.width as f32
             / self.swapchain_properties.extent.height as f32;
         let ubo = UniformBufferObject {
-            model: Matrix4::from_angle_x(Deg(10.0*self.camera.blub)),
-            view: Matrix4::look_at_rh(
-                Point3::new(3.0, 0.0, -50.0),
-                // Point3::new(10.0*self.camera.blub, 0.0, -50.0),
-                Point3::new(0.0, 0.0, 0.0),
-                Vector3::new(0.0, 1.0, 0.0),
-            ),
+            model: Matrix4::from_angle_x(Deg(270.0)),
+            view: self.camera.look_at(Vector3::new(0.0, 0.0, 0.0)),
             proj: math::perspective(Deg(45.0), aspect, 0.1, 1000.0),
         };
         let ubos = [ubo];
