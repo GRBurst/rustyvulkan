@@ -2236,22 +2236,26 @@ impl VulkanApp {
             let x_ratio = delta[0] as f32 / self.swapchain_properties.extent.width as f32;
             let y_ratio = delta[1] as f32 / self.swapchain_properties.extent.height as f32;
             let theta = Rad(x_ratio * 180.0_f32.to_radians());
-            let phi = Rad(y_ratio * 90.0_f32.to_radians());
+            let phi = Rad(-y_ratio * 90.0_f32.to_radians());
+            // println!("Theta: {}, Phi: {}", theta.0, phi.0);
             self.camera.rotate(Vector2::new(theta, phi));
         }
         if let Some(wheel_delta) = self.wheel_delta {
-            if wheel_delta > 0.0 {
-                self.camera.move_forward(wheel_delta * 0.3);
-            } else {
-                self.camera.move_backward(wheel_delta * 0.3);
-            }
+            // println!("Wheel: {}", wheel_delta);
+            self.camera.move_forward(wheel_delta * 0.3);
         }
 
         let aspect = self.swapchain_properties.extent.width as f32
             / self.swapchain_properties.extent.height as f32;
         let ubo = UniformBufferObject {
-            model: Matrix4::from_angle_x(Deg(270.0)),
-            view: self.camera.look_at(Point3::new(0.0, 0.0, 0.0)),
+            model: Matrix4::from_angle_x(Deg(0.0)),
+            // view: self.camera.look_at(Point3::new(0.0, 0.0, 0.0)),
+            // view: self.camera.look_at(
+            //     self.camera.pos + Vector3::new(0.0, 0.0,-1.0)
+            // ),
+            view: self.camera.look_to(
+                self.camera.get_view_direction()
+            ),
             proj: math::perspective(Deg(45.0), aspect, 0.1, 1000.0),
         };
         let ubos = [ubo];

@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 
 #[derive(Clone, Copy)]
 pub struct Camera {
-    pos: Point3<f32>,
+    pub pos: Point3<f32>,
     near_plane: f32,
     far_plane: f32,
     horizontal_angle: f32,
@@ -36,16 +36,22 @@ impl Camera {
         Matrix4::look_at_rh(self.pos, view_point, self.get_up())
     }
 
+    pub fn look_to(&self, view_dir: Vector3<f32>) -> Matrix4<f32> {
+        Matrix4::look_to_rh(self.pos, view_dir, self.get_up())
+    }
+
     pub fn move_camera(&mut self, dist: Vector3<f32>) {
         self.pos += dist;
     }
 
     pub fn move_forward(&mut self, dist: f32) {
         self.move_camera(dist * self.get_view_direction());
+        println!("Camera: {}, {}, {}", self.pos.x, self.pos.y, self.pos.z);
     }
 
     pub fn move_backward(&mut self, dist: f32) {
-        self.move_camera(-dist * self.get_view_direction());
+        self.move_camera(dist * self.get_view_direction());
+        println!("Camera: {}, {}, {}", self.pos.x, self.pos.y, self.pos.z);
     }
 
     pub fn rotate(&mut self, degree: Vector2<Rad<f32>>) {
