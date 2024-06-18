@@ -2251,7 +2251,7 @@ impl VulkanApp {
             / self.swapchain_properties.extent.height as f32;
         let ubo = UniformBufferObject {
             model: Matrix4::from_angle_x(Deg(270.0)),
-            view: self.camera.look_at(Vector3::new(0.0, 0.0, 0.0)),
+            view: self.camera.look_at(Point3::new(0.0, 0.0, 0.0)),
             proj: math::perspective(Deg(45.0), aspect, 0.1, 1000.0),
         };
         let ubos = [ubo];

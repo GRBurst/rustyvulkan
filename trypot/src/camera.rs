@@ -32,8 +32,8 @@ impl Camera {
         self.get_right().cross(self.get_view_direction()).normalize()
     }
 
-    pub fn look_at(&self, view_pos: Vector3<f32>) -> Matrix4<f32> {
-        Matrix4::look_to_rh(self.pos, view_pos, self.get_up())
+    pub fn look_at(&self, view_point: Point3<f32>) -> Matrix4<f32> {
+        Matrix4::look_at_rh(self.pos, view_point, self.get_up())
     }
 
     pub fn move_camera(&mut self, dist: Vector3<f32>) {
