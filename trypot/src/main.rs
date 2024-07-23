@@ -19,10 +19,7 @@ use std::{
     mem::{align_of, offset_of, size_of, size_of_val},
 };
 use winit::{
-    dpi::PhysicalSize,
-    event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    dpi::PhysicalSize, event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent, KeyEvent}, event_loop::{ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowBuilder}
 };
 
 const WIDTH: u32 = 800;
@@ -44,10 +41,12 @@ fn main() {
     let mut dirty_swapchain = false;
 
     // Used to accumutate input events from the start to the end of a frame
+    
     let mut is_left_clicked = None;
     let mut cursor_position = None;
     let mut last_position = app.cursor_position;
     let mut wheel_delta = None;
+    let mut key_press: Option<KeyCode> = None;
 
     event_loop
         .run(move |event, elwt| {
@@ -59,8 +58,10 @@ fn main() {
                         cursor_position = None;
                         last_position = app.cursor_position;
                         wheel_delta = None;
+                        key_press = None;
                     }
                 }
+                //TODO: refactor to Redraw Request?
                 Event::AboutToWait => {
                     // update input state after accumulating event
                     {
@@ -77,6 +78,7 @@ fn main() {
                             app.cursor_delta = None;
                         }
                         app.wheel_delta = wheel_delta;
+                        
                     }
 
                     // render
@@ -117,6 +119,22 @@ fn main() {
                     } => {
                         wheel_delta = Some(v_lines);
                     }
+                    WindowEvent::KeyboardInput { 
+                        event: KeyEvent{
+                            physical_key: PhysicalKey::Code(KeyCode::KeyW),
+                            state,
+                            ..
+                        }, .. 
+                    } => {
+                        if state.is_pressed(){
+                            key_press = Some(KeyCode::KeyW);
+                        }
+                        else{
+                            key_press = None;
+                        }
+                        app.pressed_key_W = key_press;
+                        
+                    },
                     _ => (),
                 },
                 Event::LoopExiting => app.wait_gpu_idle(),
@@ -134,6 +152,7 @@ struct VulkanApp {
     cursor_position: [i32; 2],
     cursor_delta: Option<[i32; 2]>,
     wheel_delta: Option<f32>,
+    pressed_key_W: Option<KeyCode>,
 
     vk_context: VkContext,
     queue_families_indices: QueueFamiliesIndices,
@@ -316,6 +335,7 @@ impl VulkanApp {
             cursor_position: [0, 0],
             cursor_delta: None,
             wheel_delta: None,
+            pressed_key_W: None,
             vk_context,
             queue_families_indices,
             graphics_queue,
@@ -2241,6 +2261,10 @@ impl VulkanApp {
         }
         if let Some(wheel_delta) = self.wheel_delta {
             self.camera.move_forward(wheel_delta * 0.3);
+        }
+        
+        if let Some(pressed_key_W) = self.pressed_key_W{
+            self.camera.move_forward(0.3);
         }
 
         let aspect = self.swapchain_properties.extent.width as f32
