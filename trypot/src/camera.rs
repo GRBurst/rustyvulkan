@@ -1,11 +1,11 @@
-use crate::math;
+use crate::{math, transform::Transform};
 
-use cgmath::{Matrix4, Point3, Vector2, Vector3, Deg, Rad, InnerSpace};
+use cgmath::{Matrix4, Point3, Vector2, Vector3, Deg, Rad, InnerSpace, Quaternion};
 use std::f32::consts::PI;
 
 #[derive(Clone, Copy)]
 pub struct Camera {
-    pub pos: Point3<f32>,
+    pub transform: Transform<f32>,
     h_fov: Deg<f32>,
     near_plane: f32,
     far_plane: f32,
@@ -36,25 +36,25 @@ impl Camera {
     }
 
     pub fn look_at(&self, view_point: Point3<f32>) -> Matrix4<f32> {
-        Matrix4::look_at_rh(self.pos, view_point, self.get_up())
+        Matrix4::look_at_rh(self.transform.position, view_point, self.get_up())
     }
 
     pub fn look_to(&self, view_dir: Vector3<f32>) -> Matrix4<f32> {
-        Matrix4::look_to_rh(self.pos, view_dir, self.get_up())
+        Matrix4::look_to_rh(self.transform.position, view_dir, self.get_up())
     }
 
     pub fn move_camera(&mut self, dist: Vector3<f32>) {
-        self.pos += dist;
+        self.transform.position += dist;
     }
 
     pub fn move_forward(&mut self, dist: f32) {
         self.move_camera(dist * self.get_view_direction());
-        println!("Camera: {}, {}, {}", self.pos.x, self.pos.y, self.pos.z);
+        println!("Camera: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
     }
 
     pub fn move_backward(&mut self, dist: f32) {
         self.move_camera(dist * self.get_view_direction());
-        println!("Camera: {}, {}, {}", self.pos.x, self.pos.y, self.pos.z);
+        println!("Camera: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
     }
 
     pub fn rotate(&mut self, degree: Vector2<Rad<f32>>) {
@@ -71,7 +71,7 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Camera {
-            pos: Point3::new(0.0, 1.0, 0.0),
+            transform: Transform::new(Point3::new(0.0, 1.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)),
             h_fov: Deg(45.0),
             near_plane: 0.1,
             far_plane: 1000.0,
