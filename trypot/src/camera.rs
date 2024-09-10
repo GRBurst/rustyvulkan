@@ -58,7 +58,7 @@ impl Camera {
     }
 
     pub fn rotate(&mut self, degree: Vector2<Rad<f32>>) {
-        self.horizontal_angle = (self.horizontal_angle + degree.x.0) % (2.0*PI);
+        self.horizontal_angle = (self.horizontal_angle - degree.x.0) % (2.0*PI);
         self.vertical_angle = (self.vertical_angle + degree.y.0) % (2.0*PI);
     }
 
