@@ -1,4 +1,5 @@
 mod camera;
+mod gameobject;
 mod transform;
 mod context;
 mod debug;
@@ -14,6 +15,7 @@ use ash::{
     vk, Device, Entry, Instance,
 };
 use cgmath::{Deg, Matrix4, Vector2, Rad};
+use gameobject::GameObject;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
     ffi::{CStr, CString},
@@ -187,6 +189,7 @@ struct VulkanApp {
     descriptor_sets: Vec<vk::DescriptorSet>,
     command_buffers: Vec<vk::CommandBuffer>,
     in_flight_frames: InFlightFrames,
+    gO: GameObject,
 }
 
 impl VulkanApp {
@@ -207,6 +210,8 @@ impl VulkanApp {
             )
             .unwrap()
         };
+
+        
 
         let debug_report_callback = setup_debug_messenger(&entry, &instance);
 
@@ -328,10 +333,12 @@ impl VulkanApp {
         );
 
         let in_flight_frames = Self::create_sync_objects(vk_context.device());
-
+        let camera = Camera::default();
+        let gO = GameObject::new_with_camera( Some(camera));
         Self {
             resize_dimensions: None,
-            camera: Default::default(),
+            camera,
+            gO,
             is_left_clicked: false,
             cursor_position: [0, 0],
             cursor_delta: None,
@@ -2256,26 +2263,26 @@ impl VulkanApp {
             let delta = self.cursor_delta.take().unwrap();
             let x_ratio = delta[0] as f32 / self.swapchain_properties.extent.width as f32;
             let y_ratio = delta[1] as f32 / self.swapchain_properties.extent.height as f32;
-            let theta = Rad(x_ratio * 180.0_f32.to_radians());
-            let phi = Rad(-y_ratio * 90.0_f32.to_radians());
-            self.camera.rotate(Vector2::new(theta, phi));
+            let theta = x_ratio * 180.0_f32.to_radians();
+            let phi = -y_ratio * 90.0_f32.to_radians();
+            self.gO.transform.add_rotation(theta, phi, 0f32);
         }
         if let Some(wheel_delta) = self.wheel_delta {
-            self.camera.move_forward(wheel_delta * 0.3);
+            self.gO.transform.move_by(0f32, 0f32, wheel_delta * 0.3);
         }
         
         if let Some(pressed_key_W) = self.pressed_key_W{
-            self.camera.move_forward(0.3);
+            self.gO.transform.move_by(0f32, 0f32, 0.3f32);
         }
-
+        self.gO.print();
         let aspect = self.swapchain_properties.extent.width as f32
             / self.swapchain_properties.extent.height as f32;
         let ubo = UniformBufferObject {
             model: Matrix4::from_angle_x(Deg(0.0)),
-            view: self.camera.look_to(
-                self.camera.get_view_direction()
+            view: self.gO.camera.unwrap().look_to(
+                self.gO.camera.unwrap().get_view_direction()
             ),
-            proj: self.camera.get_projection_matrix(aspect),
+            proj: self.gO.camera.unwrap().get_projection_matrix(aspect),
         };
         let ubos = [ubo];
 
