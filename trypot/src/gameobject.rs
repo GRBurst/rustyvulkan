@@ -29,10 +29,13 @@ impl GameObject {
         }
     }
 
-    //pub fn move_by(&mut self, x: f32, y: f32, z: f32) {
-    //    self.transform.move_by(x, y, z);
-    //    self.camera.map(|mut cam| cam.move_forward(z));
-    //}
+    pub fn move_by(&mut self, x: f32, y: f32, z: f32) {
+        self.transform.move_by(x, y, z);
+        self.camera = self.camera.map(|mut cam| {
+            cam.move_forward(z);
+            cam
+        });
+    }
 
     pub fn print(&self)
     {

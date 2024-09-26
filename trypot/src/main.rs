@@ -2270,7 +2270,8 @@ impl VulkanApp {
             self.gO.transform.move_by(0f32, 0f32, move_delta);
             //self.gO.camera.map(|mut cam| cam.move_forward(move_delta));
             self.gO.camera = self.gO.camera.map(|mut cam| {
-                cam.move_forward(move_delta); cam
+                cam.move_forward(move_delta);
+                cam
             });
         }
         if let Some(pressed_key_W) = self.pressed_key_W{
