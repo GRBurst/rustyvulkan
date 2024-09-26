@@ -48,8 +48,9 @@ impl Camera {
     }
 
     pub fn move_forward(&mut self, dist: f32) {
+        println!("Before Move Camera: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
         self.move_camera(dist * self.get_view_direction());
-        println!("Camera: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
+        println!("After Move Camera: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
     }
 
     pub fn move_backward(&mut self, dist: f32) {

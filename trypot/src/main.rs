@@ -14,7 +14,7 @@ use ash::{
     khr::{surface, swapchain as khr_swapchain},
     vk, Device, Entry, Instance,
 };
-use cgmath::{Deg, Matrix4, Vector2, Rad};
+use cgmath::{Deg, Matrix4, Vector2, Vector3, Rad};
 use gameobject::GameObject;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
@@ -150,7 +150,7 @@ fn main() {
 struct VulkanApp {
     resize_dimensions: Option<[u32; 2]>,
 
-    camera: Camera,
+    gO: GameObject,
     is_left_clicked: bool,
     cursor_position: [i32; 2],
     cursor_delta: Option<[i32; 2]>,
@@ -189,7 +189,6 @@ struct VulkanApp {
     descriptor_sets: Vec<vk::DescriptorSet>,
     command_buffers: Vec<vk::CommandBuffer>,
     in_flight_frames: InFlightFrames,
-    gO: GameObject,
 }
 
 impl VulkanApp {
@@ -333,11 +332,9 @@ impl VulkanApp {
         );
 
         let in_flight_frames = Self::create_sync_objects(vk_context.device());
-        let camera = Camera::default();
-        let gO = GameObject::new_with_camera( Some(camera));
+        let gO = GameObject::new_with_camera(Some(Camera::default()));
         Self {
             resize_dimensions: None,
-            camera,
             gO,
             is_left_clicked: false,
             cursor_position: [0, 0],
@@ -2268,9 +2265,14 @@ impl VulkanApp {
             self.gO.transform.add_rotation(theta, phi, 0f32);
         }
         if let Some(wheel_delta) = self.wheel_delta {
-            self.gO.transform.move_by(0f32, 0f32, wheel_delta * 0.3);
+            let move_delta = wheel_delta * 0.3;
+            //self.camera.move_camera(Vector3<f32>::new(0f32, 0f32, move_delta));
+            self.gO.transform.move_by(0f32, 0f32, move_delta);
+            //self.gO.camera.map(|mut cam| cam.move_forward(move_delta));
+            self.gO.camera = self.gO.camera.map(|mut cam| {
+                cam.move_forward(move_delta); cam
+            });
         }
-        
         if let Some(pressed_key_W) = self.pressed_key_W{
             self.gO.transform.move_by(0f32, 0f32, 0.3f32);
         }
