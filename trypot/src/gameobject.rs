@@ -22,9 +22,17 @@ impl GameObject {
         GameObject { transform: Transform::new(Point3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)), camera: None}
     }
 
-    pub const fn new_with_camera( cam: Option<Camera>) -> GameObject {
-        GameObject { transform: Transform::new(Point3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)), camera: cam}
+    pub const fn new_with_camera( cam: Option<Camera>) -> Self {
+        GameObject {
+            transform: Transform::new(Point3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)),
+            camera: cam
+        }
     }
+
+    //pub fn move_by(&mut self, x: f32, y: f32, z: f32) {
+    //    self.transform.move_by(x, y, z);
+    //    self.camera.map(|mut cam| cam.move_forward(z));
+    //}
 
     pub fn print(&self)
     {

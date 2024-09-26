@@ -1,13 +1,16 @@
-
-use crate::math;
-
-use cgmath::{Deg, Euler, InnerSpace, Matrix4, Point3, Quaternion, Rad, Vector2, Vector3, BaseFloat, Basis3};
+use cgmath::{Euler, Point3, Quaternion, Rad, BaseFloat};
 
 #[derive(Clone, Copy)]
 pub struct Transform<S:BaseFloat> {
     pub position: Point3<S>,
     pub rotation: Quaternion<S>
 }
+
+//impl std::fmt::Display for Transform<S> {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//        write!("Transform(X: {} Y: {} Z: {})", self.position.x.to_string(), str(self.position.y), str(self.position.z))
+//    }
+//}
 
 impl<S:BaseFloat> Transform<S> {
     /// Construct a new quaternion from one scalar component and three
@@ -30,9 +33,11 @@ impl<S:BaseFloat> Transform<S> {
     }
 
     pub fn move_by(&mut self, x: S, y: S, z: S) {
+        //println!("Before move => {:?}", self.position);
         self.position.x += x;
         self.position.y += y;
         self.position.z += z;
+        //println!("After move => {:?}", self.position)
     }
 
     pub fn add_rotation_p3(&mut self, rot: Point3<S>) {
@@ -43,7 +48,6 @@ impl<S:BaseFloat> Transform<S> {
         bla.z += blu.z;
 
         self.rotation = Quaternion::from(bla);
-        
     }
 
     pub fn add_rotation(&mut self, x: S, y: S, z: S) {
@@ -54,10 +58,5 @@ impl<S:BaseFloat> Transform<S> {
         bla.z += blu.z;
 
         self.rotation = Quaternion::from(bla);
-        
     }
-    
 }
-
-
-    
