@@ -65,7 +65,10 @@ impl Camera {
     pub fn get_projection_matrix(&self, aspect: f32) -> Matrix4<f32> {
         math::perspective(self.h_fov, aspect, self.near_plane, self.far_plane)
     }
-
+    
+    pub fn print(&self) {
+        println!("Camera: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
+    }
 }
 
 impl Default for Camera {
