@@ -14,7 +14,7 @@ use ash::{
     khr::{surface, swapchain as khr_swapchain},
     vk, Device, Entry, Instance,
 };
-use cgmath::{Deg, Matrix4, Vector2, Rad};
+use cgmath::{Deg, Matrix4, Vector2, Rad, Vector3};
 use gameobject::GameObject;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
@@ -45,11 +45,11 @@ fn main() {
 
     // Used to accumutate input events from the start to the end of a frame
     
-    let mut is_left_clicked = None;
-    let mut cursor_position = None;
-    let mut last_position = app.cursor_position;
-    let mut wheel_delta = None;
-    let mut key_press: Option<KeyCode> = None;
+    let mut is_cursor_captured: Option<bool> = None;
+    let mut wheel_delta: Option<f32> = None;
+    let mut mouse_delta: Option<[i32; 2]> = None;
+    let mut key_press = None;
+    let mut last_cursor_position: Option<(f64, f64)> = None;
 
     event_loop
         .run(move |event, elwt| {
@@ -57,33 +57,16 @@ fn main() {
                 Event::NewEvents(_) => {
                     // reset input states on new frame
                     {
-                        is_left_clicked = None;
-                        cursor_position = None;
-                        last_position = app.cursor_position;
+                        is_cursor_captured = None;
                         wheel_delta = None;
+                        mouse_delta = None;
                         key_press = None;
                     }
                 }
                 //TODO: refactor to Redraw Request?
                 Event::AboutToWait => {
                     // update input state after accumulating event
-                    {
-                        if let Some(is_left_clicked) = is_left_clicked {
-                            app.is_left_clicked = is_left_clicked;
-                        }
-                        if let Some(position) = cursor_position {
-                            app.cursor_position = position;
-                            app.cursor_delta = Some([
-                                position[0] - last_position[0],
-                                position[1] - last_position[1],
-                            ]);
-                        } else {
-                            app.cursor_delta = None;
-                        }
-                        app.wheel_delta = wheel_delta;
-                        
-                    }
-
+                  
                     // render
                     {
                         if dirty_swapchain {
@@ -96,31 +79,61 @@ fn main() {
                         }
                         dirty_swapchain = app.draw_frame();
                     }
+                    // Reset input states after processing
+                    app.wheel_delta = None;
+                    app.mouse_delta = None;
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => elwt.exit(),
                     WindowEvent::Resized { .. } => dirty_swapchain = true,
-                    // Accumulate input events
-                    WindowEvent::MouseInput {
-                        button: MouseButton::Left,
-                        state,
-                        ..
-                    } => {
-                        if state == ElementState::Pressed {
-                            is_left_clicked = Some(true);
+                    WindowEvent::Focused(focused) => {
+                        if focused {
+                            // Capture and hide cursor when window gains focus
+                            window.set_cursor_grab(winit::window::CursorGrabMode::Confined)
+                                .or_else(|_e| window.set_cursor_grab(winit::window::CursorGrabMode::Locked))
+                                .unwrap();
+                            //window.set_cursor_visible(false);
+                            app.is_cursor_captured = true;
                         } else {
-                            is_left_clicked = Some(false);
+                            // Release cursor when window loses focus
+                            window.set_cursor_grab(winit::window::CursorGrabMode::None).unwrap();
+                           // window.set_cursor_visible(true);
+                            app.is_cursor_captured = false;
                         }
-                    }
+                    },
                     WindowEvent::CursorMoved { position, .. } => {
-                        let position: (i32, i32) = position.into();
-                        cursor_position = Some([position.0, position.1]);
-                    }
+                        if let Some((last_x, last_y)) = last_cursor_position {
+                            // Only calculate delta if we're in captured mode
+                            if app.is_cursor_captured {
+                                app.mouse_delta = Some([
+                                    (position.x - last_x) as i32,
+                                    (position.y - last_y) as i32
+                                ]);
+                            }
+                        }
+                        last_cursor_position = Some((position.x, position.y));
+                        
+                        // Only center the cursor after recording the delta
+                        if app.is_cursor_captured {
+                            let window_size = window.inner_size();
+                            let center = winit::dpi::PhysicalPosition::new(
+                                window_size.width as f64 / 2.0,
+                                window_size.height as f64 / 2.0
+                            );
+                            // Only center if we've moved significantly from center to reduce events
+                            if (position.x - center.x).abs() > 2.0 || 
+                               (position.y - center.y).abs() > 2.0 {
+                                window.set_cursor_position(center).unwrap();
+                                // Update last position to center to avoid jumps
+                                last_cursor_position = Some((center.x, center.y));
+                            }
+                        }
+                    },
                     WindowEvent::MouseWheel {
                         delta: MouseScrollDelta::LineDelta(_, v_lines),
                         ..
                     } => {
-                        wheel_delta = Some(v_lines);
+                        app.wheel_delta = Some(v_lines);
                     }
                     WindowEvent::KeyboardInput { 
                         event: KeyEvent{
@@ -138,6 +151,54 @@ fn main() {
                         app.pressed_key_W = key_press;
                         
                     },
+                    WindowEvent::KeyboardInput { 
+                        event: KeyEvent{
+                            physical_key: PhysicalKey::Code(KeyCode::KeyA),
+                            state,
+                            ..
+                        }, .. 
+                    } => {
+                        if state.is_pressed(){
+                            key_press = Some(KeyCode::KeyA);
+                        }
+                        else{
+                            key_press = None;
+                        }
+                        app.pressed_key_A = key_press;
+                        
+                    },
+                    WindowEvent::KeyboardInput { 
+                        event: KeyEvent{
+                            physical_key: PhysicalKey::Code(KeyCode::KeyS),
+                            state,
+                            ..
+                        }, .. 
+                    } => {
+                        if state.is_pressed(){
+                            key_press = Some(KeyCode::KeyS);
+                        }
+                        else{
+                            key_press = None;
+                        }
+                        app.pressed_key_S = key_press;
+                        
+                    },
+                    WindowEvent::KeyboardInput { 
+                        event: KeyEvent{
+                            physical_key: PhysicalKey::Code(KeyCode::KeyD),
+                            state,
+                            ..
+                        }, .. 
+                    } => {
+                        if state.is_pressed(){
+                            key_press = Some(KeyCode::KeyD);
+                        }
+                        else{
+                            key_press = None;
+                        }
+                        app.pressed_key_D = key_press;
+                        
+                    },
                     _ => (),
                 },
                 Event::LoopExiting => app.wait_gpu_idle(),
@@ -151,11 +212,13 @@ struct VulkanApp {
     resize_dimensions: Option<[u32; 2]>,
 
     camera: Camera,
-    is_left_clicked: bool,
-    cursor_position: [i32; 2],
-    cursor_delta: Option<[i32; 2]>,
+    is_cursor_captured: bool,
+    mouse_delta: Option<[i32; 2]>,
     wheel_delta: Option<f32>,
     pressed_key_W: Option<KeyCode>,
+    pressed_key_A: Option<KeyCode>,
+    pressed_key_S: Option<KeyCode>,
+    pressed_key_D: Option<KeyCode>,
 
     vk_context: VkContext,
     queue_families_indices: QueueFamiliesIndices,
@@ -339,11 +402,13 @@ impl VulkanApp {
             resize_dimensions: None,
             camera,
             gO,
-            is_left_clicked: false,
-            cursor_position: [0, 0],
-            cursor_delta: None,
+            is_cursor_captured: false,
+            mouse_delta: None,
             wheel_delta: None,
             pressed_key_W: None,
+            pressed_key_A: None,
+            pressed_key_S: None,
+            pressed_key_D: None,
             vk_context,
             queue_families_indices,
             graphics_queue,
@@ -2259,22 +2324,47 @@ impl VulkanApp {
     }
 
     fn update_uniform_buffers(&mut self, current_image: u32) {
-        if self.is_left_clicked && self.cursor_delta.is_some() {
-            let delta = self.cursor_delta.take().unwrap();
+
+        self.mouse_delta.take().map(|delta| {
             let x_ratio = delta[0] as f32 / self.swapchain_properties.extent.width as f32;
             let y_ratio = delta[1] as f32 / self.swapchain_properties.extent.height as f32;
             let theta = x_ratio * 180.0_f32.to_radians();
             let phi = -y_ratio * 90.0_f32.to_radians();
-            self.gO.transform.add_rotation(theta, phi, 0f32);
-        }
+            self.gO.camera.as_mut().map(|camera| {
+                camera.rotate(Vector2::new(Rad(theta), Rad(phi)));
+            });
+        });
         if let Some(wheel_delta) = self.wheel_delta {
-            self.gO.transform.move_by(0f32, 0f32, wheel_delta * 0.3);
+            self.gO.camera.as_mut().map(|camera| {
+                camera.move_camera(Vector3::new(0.0_f32, 0.0_f32, wheel_delta * 0.3_f32))
+            });
         }
-        
-        if let Some(pressed_key_W) = self.pressed_key_W{
-            self.gO.transform.move_by(0f32, 0f32, 0.3f32);
+
+        if let Some(pressed_key_W) = self.pressed_key_W {
+            self.gO.camera.as_mut().map(|camera| {
+                camera.move_camera(camera.get_view_direction() * 0.03);
+            });
         }
-        self.gO.print();
+
+        if let Some(pressed_key_S) = self.pressed_key_S {
+            self.gO.camera.as_mut().map(|camera| {
+                camera.move_camera(camera.get_view_direction() * -0.03);  // or use move_backward(0.3)
+            });
+        }
+
+        if let Some(pressed_key_A) = self.pressed_key_A {
+            self.gO.camera.as_mut().map(|camera| {
+                camera.move_camera(camera.get_right() * -0.03);
+            });
+        }
+
+        if let Some(pressed_key_D) = self.pressed_key_D {
+            self.gO.camera.as_mut().map(|camera| {
+                camera.move_camera(camera.get_right() * 0.03);
+            });
+        }
+
+        self.gO.camera.as_mut().map(|camera| camera.print());
         let aspect = self.swapchain_properties.extent.width as f32
             / self.swapchain_properties.extent.height as f32;
         let ubo = UniformBufferObject {
