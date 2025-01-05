@@ -2,26 +2,21 @@
   pkgs,
 }: let
   pname = "rustyvulkan";
-
-  # Create a custom vulkan-validation-layers package built with gcc13
-  customVulkanValidationLayers = pkgs.vulkan-validation-layers.override {
-    stdenv = pkgs.gcc13Stdenv;
-  };
 in
 pkgs.mkShell {
   # Build-time dependencies (tools needed during compilation)
   nativeBuildInputs = with pkgs; [
     pkg-config
     fontconfig
-    shaderc     # GLSL compiler
-    glslang     # Shader validation and compilation
+    shaderc
+    glslang
   ];
 
   # Runtime dependencies (libraries needed by the application)
   buildInputs = with pkgs; [
     vulkan-headers
     vulkan-loader
-    customVulkanValidationLayers  # Use our custom-built validation layers
+    vulkan-validation-layers
     vulkan-tools
 
     # X11 dependencies
@@ -70,6 +65,7 @@ pkgs.mkShell {
         echo "Warning: Vulkan validation layers not found in vulkaninfo"
         echo "Validation layer path: $VK_LAYER_PATH"
         ls -l "$VK_LAYER_PATH" || echo "Directory not found!"
+        echo "You might have version missmatches. Try nix-garbage-collect and re-enter the shell."
       fi
     else
       echo "Warning: vulkaninfo not found"
