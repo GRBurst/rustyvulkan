@@ -1,5 +1,6 @@
-{ pkgs ? import <nixpkgs> { } }:
-let
+{
+  pkgs,
+}: let
   pname = "rustyvulkan";
 in
 pkgs.mkShell {
@@ -27,6 +28,7 @@ pkgs.mkShell {
     shaderc
     glslang
 
+    code-cursor
     blender
   ];
 
