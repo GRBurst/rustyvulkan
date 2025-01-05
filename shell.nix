@@ -53,10 +53,10 @@ pkgs.mkShell {
     export ENABLE_VALIDATION_LAYERS=1
     export VK_LAYER_PATH="${customVulkanValidationLayers}/share/vulkan/explicit_layer.d"
     export VK_INSTANCE_LAYERS="VK_LAYER_KHRONOS_validation"
-    
+
     # Make sure both runtime and validation layers are in library path
     export LD_LIBRARY_PATH="${customVulkanValidationLayers}/lib:${pkgs.vulkan-loader}/lib:${pkgs.libxkbcommon}/lib:$LD_LIBRARY_PATH"
-    
+
     # Additional Vulkan debug settings
     export VK_LOADER_DEBUG=all
     export VK_LOADER_LAYERS_ENABLE=1
@@ -64,7 +64,7 @@ pkgs.mkShell {
     # Verify validation layers are available
     echo "Checking Vulkan validation layers..."
     if command -v vulkaninfo >/dev/null 2>&1; then
-      if vulkaninfo | grep -q "VK_LAYER_KHRONOS_validation"; then
+      if vulkaninfo 2>/dev/null | grep -q "VK_LAYER_KHRONOS_validation"; then
         echo "Vulkan validation layers are properly installed"
       else
         echo "Warning: Vulkan validation layers not found in vulkaninfo"
