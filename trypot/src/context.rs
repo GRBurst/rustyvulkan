@@ -1,13 +1,22 @@
-use ash::{ext::debug_utils, khr::surface, vk, Device, Entry, Instance};
 
+use ash::{Device, Entry, Instance};
+use ash::ext::debug_utils;
+use ash::vk::DebugUtilsMessengerEXT;
+use ash::vk::SurfaceKHR;
+use ash::khr::surface;
+use ash::vk;
+
+#[derive(Clone)]
 pub struct VkContext {
-    _entry: Entry,
+    entry: Entry,
     instance: Instance,
-    debug_report_callback: Option<(debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
+    debug_utils: debug_utils::Instance,
+    debug_callback: vk::DebugUtilsMessengerEXT,
     surface: surface::Instance,
-    surface_khr: vk::SurfaceKHR,
+    surface_khr: SurfaceKHR,
     physical_device: vk::PhysicalDevice,
     device: Device,
+    mem_properties: vk::PhysicalDeviceMemoryProperties,
 }
 
 impl VkContext {
@@ -30,9 +39,7 @@ impl VkContext {
     pub fn device(&self) -> &Device {
         &self.device
     }
-}
 
-impl VkContext {
     pub fn get_mem_properties(&self) -> vk::PhysicalDeviceMemoryProperties {
         unsafe {
             self.instance
@@ -40,7 +47,6 @@ impl VkContext {
         }
     }
 
-    /// Find the first compatible format from `candidates`.
     pub fn find_supported_format(
         &self,
         candidates: &[vk::Format],
@@ -58,7 +64,6 @@ impl VkContext {
         })
     }
 
-    /// Return the maximim sample count supported.
     pub fn get_max_usable_sample_count(&self) -> vk::SampleCountFlags {
         let props = unsafe {
             self.instance
@@ -84,26 +89,27 @@ impl VkContext {
             vk::SampleCountFlags::TYPE_1
         }
     }
-}
 
-impl VkContext {
     pub fn new(
         entry: Entry,
         instance: Instance,
-        debug_report_callback: Option<(debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
+        debug_utils: debug_utils::Instance,
+        debug_callback: vk::DebugUtilsMessengerEXT,
         surface: surface::Instance,
         surface_khr: vk::SurfaceKHR,
         physical_device: vk::PhysicalDevice,
         device: Device,
     ) -> Self {
         VkContext {
-            _entry: entry,
+            entry,
             instance,
-            debug_report_callback,
+            debug_utils,
+            debug_callback,
             surface,
             surface_khr,
             physical_device,
             device,
+            mem_properties: vk::PhysicalDeviceMemoryProperties::default(),
         }
     }
 }
@@ -112,11 +118,10 @@ impl Drop for VkContext {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_device(None);
+            self.debug_utils.destroy_debug_utils_messenger(self.debug_callback, None);
             self.surface.destroy_surface(self.surface_khr, None);
-            if let Some((utils, messenger)) = self.debug_report_callback.take() {
-                utils.destroy_debug_utils_messenger(messenger, None);
-            }
             self.instance.destroy_instance(None);
         }
     }
 }
+ 
