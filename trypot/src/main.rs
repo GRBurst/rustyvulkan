@@ -8,14 +8,20 @@ mod math;
 mod swapchain;
 mod texture;
 
-use crate::{camera::*, context::*, debug::*, swapchain::*, texture::*};
+use crate::{
+    camera::*,
+    context::*,
+    debug::*,
+    swapchain::*,
+    texture::*,
+    gameobject::{GameObject, RenderObject, Model, Vertex},
+};
 use ash::{
     ext::debug_utils,
     khr::{surface, swapchain as khr_swapchain},
     vk, Device, Entry, Instance,
 };
 use cgmath::{Deg, Matrix4, Vector2, Rad, Vector3};
-use gameobject::GameObject;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
     ffi::{CStr, CString},
@@ -240,18 +246,14 @@ struct VulkanApp {
     depth_format: vk::Format,
     depth_texture: Texture,
     texture: Texture,
-    model_index_count: usize,
-    vertex_buffer: vk::Buffer,
-    vertex_buffer_memory: vk::DeviceMemory,
-    index_buffer: vk::Buffer,
-    index_buffer_memory: vk::DeviceMemory,
+    render_objects: Vec<RenderObject>,
+    game_objects: Vec<GameObject>,
     uniform_buffers: Vec<vk::Buffer>,
     uniform_buffer_memories: Vec<vk::DeviceMemory>,
     descriptor_pool: vk::DescriptorPool,
     descriptor_sets: Vec<vk::DescriptorSet>,
     command_buffers: Vec<vk::CommandBuffer>,
     in_flight_frames: InFlightFrames,
-    gO: GameObject,
 }
 
 impl VulkanApp {
@@ -273,8 +275,6 @@ impl VulkanApp {
             .unwrap()
         };
 
-        
-
         let debug_report_callback = setup_debug_messenger(&entry, &instance);
 
         let (physical_device, queue_families_indices) =
@@ -287,14 +287,16 @@ impl VulkanApp {
                 queue_families_indices,
             );
 
+        let debug_utils = debug_utils::Instance::new(&entry, &instance);
         let vk_context = VkContext::new(
             entry,
             instance,
-            debug_report_callback,
+            debug_utils,
+            debug_report_callback.unwrap().1,
             surface,
             surface_khr,
             physical_device,
-            device,
+            device.clone(),
         );
 
         let (swapchain, swapchain_khr, properties, images) =
@@ -355,19 +357,71 @@ impl VulkanApp {
 
         let texture = Self::create_texture_image(&vk_context, command_pool, graphics_queue);
 
-        let (vertices, indices) = Self::load_model();
-        let (vertex_buffer, vertex_buffer_memory) = Self::create_vertex_buffer(
-            &vk_context,
-            transient_command_pool,
-            graphics_queue,
-            &vertices,
-        );
-        let (index_buffer, index_buffer_memory) = Self::create_index_buffer(
-            &vk_context,
-            transient_command_pool,
-            graphics_queue,
-            &indices,
-        );
+        // Create game objects
+        let mut game_objects = Vec::new();
+        
+        // Add player game object with camera (no render object)
+        let camera = Camera::default();
+        let player = GameObject::new_with_camera(Some(camera));
+        game_objects.push(player);
+
+        // Add plane game object (with render object, no camera)
+        let plane_render_object = {
+            let plane_model = Model::load("models/plane.obj");
+            let (vertex_buffer, vertex_buffer_memory) = Self::create_vertex_buffer(
+                &vk_context,
+                transient_command_pool,
+                graphics_queue,
+                &plane_model.vertices,
+            );
+            let (index_buffer, index_buffer_memory) = Self::create_index_buffer(
+                &vk_context,
+                transient_command_pool,
+                graphics_queue,
+                &plane_model.indices,
+            );
+            let index_count = plane_model.indices.len();
+            RenderObject {
+                model: plane_model,
+                vertex_buffer,
+                vertex_buffer_memory,
+                index_buffer,
+                index_buffer_memory,
+                index_count,
+            }
+        };
+        let plane_go = GameObject::new_with_render_object(plane_render_object);
+        game_objects.push(plane_go);
+
+        // Add teapot game object (with render object, no camera)
+        let teapot_render_object = {
+            let teapot_model = Model::load("models/teapot.obj");
+            let (vertex_buffer, vertex_buffer_memory) = Self::create_vertex_buffer(
+                &vk_context,
+                transient_command_pool,
+                graphics_queue,
+                &teapot_model.vertices,
+            );
+            let (index_buffer, index_buffer_memory) = Self::create_index_buffer(
+                &vk_context,
+                transient_command_pool,
+                graphics_queue,
+                &teapot_model.indices,
+            );
+            let index_count = teapot_model.indices.len();
+            RenderObject {
+                model: teapot_model,
+                vertex_buffer,
+                vertex_buffer_memory,
+                index_buffer,
+                index_buffer_memory,
+                index_count,
+            }
+        };
+        let teapot_go = GameObject::new_with_render_object(teapot_render_object);
+        game_objects.push(teapot_go);
+
+        // Create uniform buffers and descriptor sets first
         let (uniform_buffers, uniform_buffer_memories) =
             Self::create_uniform_buffers(&vk_context, images.len());
 
@@ -380,26 +434,22 @@ impl VulkanApp {
             texture,
         );
 
+        // Then create command buffers
         let command_buffers = Self::create_and_register_command_buffers(
-            vk_context.device(),
+            &device,
             command_pool,
             &swapchain_framebuffers,
             render_pass,
             properties,
-            vertex_buffer,
-            index_buffer,
-            indices.len(),
+            &game_objects,
             layout,
-            &descriptor_sets,
+            &descriptor_sets,  // Now descriptor_sets exists
             pipeline,
         );
 
-        let in_flight_frames = Self::create_sync_objects(vk_context.device());
-        let camera = Camera::default();
-        let gO = GameObject::new_with_camera( Some(camera));
-        Self {
+        // Create the VulkanApp instance first without in_flight_frames
+        let mut app = Self {
             resize_dimensions: None,
-            gO,
             is_cursor_captured: false,
             mouse_delta: None,
             wheel_delta: None,
@@ -428,18 +478,20 @@ impl VulkanApp {
             depth_format,
             depth_texture,
             texture,
-            model_index_count: indices.len(),
-            vertex_buffer,
-            vertex_buffer_memory,
-            index_buffer,
-            index_buffer_memory,
+            render_objects: Vec::new(),
+            game_objects,
             uniform_buffers,
             uniform_buffer_memories,
             descriptor_pool,
             descriptor_sets,
             command_buffers,
-            in_flight_frames,
-        }
+            in_flight_frames: InFlightFrames::new(Vec::new()), // Temporary empty value
+        };
+
+        // Now create and set the in_flight_frames using the device from vk_context
+        app.in_flight_frames = Self::create_sync_objects(app.vk_context.device());
+
+        app
     }
 
     fn create_instance(entry: &Entry, window: &Window) -> Instance {
@@ -986,8 +1038,8 @@ impl VulkanApp {
             .name(&entry_point_name);
         let shader_states_infos = [vertex_shader_state_info, fragment_shader_state_info];
 
-        let vertex_binding_descs = [Vertex::get_binding_description()];
-        let vertex_attribute_descs = Vertex::get_attribute_descriptions();
+        let vertex_binding_descs = [gameobject::Vertex::get_binding_description()];
+        let vertex_attribute_descs = gameobject::Vertex::get_attribute_descriptions();
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(&vertex_binding_descs)
             .vertex_attribute_descriptions(&vertex_attribute_descs);
@@ -1745,7 +1797,7 @@ impl VulkanApp {
         vk_context: &VkContext,
         command_pool: vk::CommandPool,
         transfer_queue: vk::Queue,
-        vertices: &[Vertex],
+        vertices: &[gameobject::Vertex],
     ) -> (vk::Buffer, vk::DeviceMemory) {
         Self::create_device_local_buffer_with_data::<u32, _>(
             vk_context,
@@ -1992,9 +2044,7 @@ impl VulkanApp {
         framebuffers: &[vk::Framebuffer],
         render_pass: vk::RenderPass,
         swapchain_properties: SwapchainProperties,
-        vertex_buffer: vk::Buffer,
-        index_buffer: vk::Buffer,
-        index_count: usize,
+        game_objects: &[GameObject],
         pipeline_layout: vk::PipelineLayout,
         descriptor_sets: &[vk::DescriptorSet],
         graphics_pipeline: vk::Pipeline,
@@ -2060,29 +2110,44 @@ impl VulkanApp {
                 device.cmd_bind_pipeline(buffer, vk::PipelineBindPoint::GRAPHICS, graphics_pipeline)
             };
 
-            // Bind vertex buffer
-            let vertex_buffers = [vertex_buffer];
-            let offsets = [0];
-            unsafe { device.cmd_bind_vertex_buffers(buffer, 0, &vertex_buffers, &offsets) };
+            // Draw each object
+            for game_object in game_objects {
+                if let Some(render_object) = &game_object.render_object {
+                    // Bind vertex buffer
+                    let vertex_buffers = [render_object.vertex_buffer];
+                    let offsets = [0];
+                    unsafe { 
+                        device.cmd_bind_vertex_buffers(buffer, 0, &vertex_buffers, &offsets);
+                        device.cmd_bind_index_buffer(
+                            buffer,
+                            render_object.index_buffer,
+                            0,
+                            vk::IndexType::UINT32,
+                        );
+                        
+                        // Bind descriptor set
+                        let null = [];
+                        device.cmd_bind_descriptor_sets(
+                            buffer,
+                            vk::PipelineBindPoint::GRAPHICS,
+                            pipeline_layout,
+                            0,
+                            &descriptor_sets[i..=i],
+                            &null,
+                        );
 
-            // Bind index buffer
-            unsafe { device.cmd_bind_index_buffer(buffer, index_buffer, 0, vk::IndexType::UINT32) };
-
-            // Bind descriptor set
-            unsafe {
-                let null = [];
-                device.cmd_bind_descriptor_sets(
-                    buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    pipeline_layout,
-                    0,
-                    &descriptor_sets[i..=i],
-                    &null,
-                )
-            };
-
-            // Draw
-            unsafe { device.cmd_draw_indexed(buffer, index_count as _, 1, 0, 0, 0) };
+                        // Draw
+                        device.cmd_draw_indexed(
+                            buffer,
+                            render_object.index_count as _,
+                            1,
+                            0,
+                            0,
+                            0,
+                        );
+                    };
+                }
+            }
 
             // End render pass
             unsafe { device.cmd_end_render_pass(buffer) };
@@ -2274,14 +2339,12 @@ impl VulkanApp {
         );
 
         let command_buffers = Self::create_and_register_command_buffers(
-            device,
+            &device,
             self.command_pool,
             &swapchain_framebuffers,
             render_pass,
             properties,
-            self.vertex_buffer,
-            self.index_buffer,
-            self.model_index_count,
+            &self.game_objects,
             layout,
             &self.descriptor_sets,
             pipeline,
@@ -2322,68 +2385,87 @@ impl VulkanApp {
     }
 
     fn update_uniform_buffers(&mut self, current_image: u32) {
-
         self.mouse_delta.take().map(|delta| {
             let x_ratio = delta[0] as f32 / self.swapchain_properties.extent.width as f32;
             let y_ratio = delta[1] as f32 / self.swapchain_properties.extent.height as f32;
             let theta = x_ratio * 180.0_f32.to_radians();
             let phi = -y_ratio * 90.0_f32.to_radians();
-            self.gO.camera.as_mut().map(|camera| {
-                camera.rotate(Vector2::new(Rad(theta), Rad(phi)));
-            });
+            if let Some(player) = self.game_objects.get_mut(0) { // Player is index 0
+                player.camera.as_mut().map(|camera| {
+                    camera.rotate(Vector2::new(Rad(theta), Rad(phi)));
+                });
+            }
         });
+
         if let Some(wheel_delta) = self.wheel_delta {
-            self.gO.camera.as_mut().map(|camera| {
-                camera.move_camera(Vector3::new(0.0_f32, 0.0_f32, wheel_delta * 0.3_f32))
-            });
+            if let Some(player) = self.game_objects.get_mut(0) {
+                if let Some(camera) = player.camera.as_mut() {
+                    camera.move_camera(Vector3::new(0.0_f32, 0.0_f32, wheel_delta * 0.3_f32))
+                }
+            }
         }
 
         if let Some(pressed_key_w) = self.pressed_key_w {
-            self.gO.camera.as_mut().map(|camera| {
-                camera.move_camera(camera.get_view_direction() * 0.03);
-            });
+            if let Some(player) = self.game_objects.get_mut(0) {
+                if let Some(camera) = player.camera.as_mut() {
+                    camera.move_camera(camera.get_view_direction() * 0.03);
+                }
+            }
         }
 
         if let Some(pressed_key_s) = self.pressed_key_s {
-            self.gO.camera.as_mut().map(|camera| {
-                camera.move_camera(camera.get_view_direction() * -0.03);  // or use move_backward(0.3)
-            });
+            if let Some(player) = self.game_objects.get_mut(0) {
+                if let Some(camera) = player.camera.as_mut() {
+                    camera.move_camera(camera.get_view_direction() * -0.03);
+                }
+            }
         }
 
         if let Some(pressed_key_a) = self.pressed_key_a {
-            self.gO.camera.as_mut().map(|camera| {
-                camera.move_camera(camera.get_right() * -0.03);
-            });
+            if let Some(player) = self.game_objects.get_mut(0) {
+                if let Some(camera) = player.camera.as_mut() {
+                    camera.move_camera(camera.get_right() * -0.03);
+                }
+            }
         }
 
         if let Some(pressed_key_d) = self.pressed_key_d {
-            self.gO.camera.as_mut().map(|camera| {
-                camera.move_camera(camera.get_right() * 0.03);
-            });
+            if let Some(player) = self.game_objects.get_mut(0) {
+                if let Some(camera) = player.camera.as_mut() {
+                    camera.move_camera(camera.get_right() * 0.03);
+                }
+            }
         }
 
-        self.gO.camera.as_mut().map(|camera| camera.print());
+        if let Some(player) = self.game_objects.get_mut(0) {
+            if let Some(camera) = player.camera.as_mut() {
+                camera.print();
+            }
+        }
+
         let aspect = self.swapchain_properties.extent.width as f32
             / self.swapchain_properties.extent.height as f32;
-        let ubo = UniformBufferObject {
-            model: Matrix4::from_angle_x(Deg(0.0)),
-            view: self.gO.camera.unwrap().look_to(
-                self.gO.camera.unwrap().get_view_direction()
-            ),
-            proj: self.gO.camera.unwrap().get_projection_matrix(aspect),
-        };
-        let ubos = [ubo];
+        if let Some(player) = self.game_objects.get_mut(0) {
+            if let Some(camera) = player.camera.as_mut() {
+                let ubo = UniformBufferObject {
+                    model: Matrix4::from_angle_x(Deg(0.0)),
+                    view: camera.look_to(camera.get_view_direction()),
+                    proj: camera.get_projection_matrix(aspect),
+                };
+                let ubos = [ubo];
 
-        let buffer_mem = self.uniform_buffer_memories[current_image as usize];
-        let size = size_of::<UniformBufferObject>() as vk::DeviceSize;
-        unsafe {
-            let device = self.vk_context.device();
-            let data_ptr = device
-                .map_memory(buffer_mem, 0, size, vk::MemoryMapFlags::empty())
-                .unwrap();
-            let mut align = ash::util::Align::new(data_ptr, align_of::<f32>() as _, size);
-            align.copy_from_slice(&ubos);
-            device.unmap_memory(buffer_mem);
+                let buffer_mem = self.uniform_buffer_memories[current_image as usize];
+                let size = size_of::<UniformBufferObject>() as vk::DeviceSize;
+                unsafe {
+                    let device = self.vk_context.device();
+                    let data_ptr = device
+                        .map_memory(buffer_mem, 0, size, vk::MemoryMapFlags::empty())
+                        .unwrap();
+                    let mut align = ash::util::Align::new(data_ptr, align_of::<f32>() as _, size);
+                    align.copy_from_slice(&ubos);
+                    device.unmap_memory(buffer_mem);
+                }
+            }
         }
     }
 }
@@ -2404,13 +2486,19 @@ impl Drop for VulkanApp {
             self.uniform_buffers
                 .iter()
                 .for_each(|b| device.destroy_buffer(*b, None));
-            device.free_memory(self.index_buffer_memory, None);
-            device.destroy_buffer(self.index_buffer, None);
-            device.destroy_buffer(self.vertex_buffer, None);
-            device.free_memory(self.vertex_buffer_memory, None);
             self.texture.destroy(device);
             device.destroy_command_pool(self.transient_command_pool, None);
             device.destroy_command_pool(self.command_pool, None);
+            
+            // Clean up render objects
+            for game_object in &self.game_objects {
+                if let Some(render_object) = &game_object.render_object {
+                    device.destroy_buffer(render_object.vertex_buffer, None);
+                    device.free_memory(render_object.vertex_buffer_memory, None);
+                    device.destroy_buffer(render_object.index_buffer, None);
+                    device.free_memory(render_object.index_buffer_memory, None);
+                }
+            }
         }
     }
 }
@@ -2471,48 +2559,6 @@ impl Iterator for InFlightFrames {
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
 #[repr(C)]
-struct Vertex {
-    pos: [f32; 3],
-    color: [f32; 3],
-    coords: [f32; 2],
-    normal: [f32; 3],
-}
-
-impl Vertex {
-    fn get_binding_description() -> vk::VertexInputBindingDescription {
-        vk::VertexInputBindingDescription::default()
-            .binding(0)
-            .stride(size_of::<Vertex>() as _)
-            .input_rate(vk::VertexInputRate::VERTEX)
-    }
-
-    fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 4] {
-        let position_desc = vk::VertexInputAttributeDescription::default()
-            .binding(0)
-            .location(0)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(offset_of!(Vertex, pos) as _);
-        let color_desc = vk::VertexInputAttributeDescription::default()
-            .binding(0)
-            .location(1)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(offset_of!(Vertex, color) as _);
-        let coords_desc = vk::VertexInputAttributeDescription::default()
-            .binding(0)
-            .location(2)
-            .format(vk::Format::R32G32_SFLOAT)
-            .offset(offset_of!(Vertex, coords) as _);
-        let normals_desc = vk::VertexInputAttributeDescription::default()
-            .binding(0)
-            .location(3)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(offset_of!(Vertex, normal) as _);
-        [position_desc, color_desc, coords_desc, normals_desc]
-    }
-}
-
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
 struct UniformBufferObject {
     model: Matrix4<f32>,
     view: Matrix4<f32>,
