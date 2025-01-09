@@ -1,6 +1,6 @@
-use crate::{camera::*, math, transform::{self, *}};
+use crate::{camera::*, transform::{*}};
 
-use cgmath::{Deg, InnerSpace, Matrix4, Point3, Quaternion, Rad, Vector2, Vector3};
+use cgmath::{Point3, Quaternion};
 
 
 #[derive(Clone, Copy)]

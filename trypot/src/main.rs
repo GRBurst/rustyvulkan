@@ -22,7 +22,7 @@ use std::{
     mem::{align_of, offset_of, size_of, size_of_val},
 };
 use winit::{
-    dpi::PhysicalSize, event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent, KeyEvent}, event_loop::{ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowBuilder}
+    dpi::PhysicalSize, event::{Event, MouseScrollDelta, WindowEvent, KeyEvent}, event_loop::{ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowBuilder}
 };
 
 const WIDTH: u32 = 800;
@@ -148,7 +148,7 @@ fn main() {
                         else{
                             key_press = None;
                         }
-                        app.pressed_key_W = key_press;
+                        app.pressed_key_w = key_press;
                         
                     },
                     WindowEvent::KeyboardInput { 
@@ -164,7 +164,7 @@ fn main() {
                         else{
                             key_press = None;
                         }
-                        app.pressed_key_A = key_press;
+                        app.pressed_key_a = key_press;
                         
                     },
                     WindowEvent::KeyboardInput { 
@@ -180,7 +180,7 @@ fn main() {
                         else{
                             key_press = None;
                         }
-                        app.pressed_key_S = key_press;
+                        app.pressed_key_s = key_press;
                         
                     },
                     WindowEvent::KeyboardInput { 
@@ -196,7 +196,7 @@ fn main() {
                         else{
                             key_press = None;
                         }
-                        app.pressed_key_D = key_press;
+                        app.pressed_key_d = key_press;
                         
                     },
                     _ => (),
@@ -211,14 +211,13 @@ fn main() {
 struct VulkanApp {
     resize_dimensions: Option<[u32; 2]>,
 
-    camera: Camera,
     is_cursor_captured: bool,
     mouse_delta: Option<[i32; 2]>,
     wheel_delta: Option<f32>,
-    pressed_key_W: Option<KeyCode>,
-    pressed_key_A: Option<KeyCode>,
-    pressed_key_S: Option<KeyCode>,
-    pressed_key_D: Option<KeyCode>,
+    pressed_key_w: Option<KeyCode>,
+    pressed_key_a: Option<KeyCode>,
+    pressed_key_s: Option<KeyCode>,
+    pressed_key_d: Option<KeyCode>,
 
     vk_context: VkContext,
     queue_families_indices: QueueFamiliesIndices,
@@ -400,15 +399,14 @@ impl VulkanApp {
         let gO = GameObject::new_with_camera( Some(camera));
         Self {
             resize_dimensions: None,
-            camera,
             gO,
             is_cursor_captured: false,
             mouse_delta: None,
             wheel_delta: None,
-            pressed_key_W: None,
-            pressed_key_A: None,
-            pressed_key_S: None,
-            pressed_key_D: None,
+            pressed_key_w: None,
+            pressed_key_a: None,
+            pressed_key_s: None,
+            pressed_key_d: None,
             vk_context,
             queue_families_indices,
             graphics_queue,
@@ -2340,25 +2338,25 @@ impl VulkanApp {
             });
         }
 
-        if let Some(pressed_key_W) = self.pressed_key_W {
+        if let Some(pressed_key_w) = self.pressed_key_w {
             self.gO.camera.as_mut().map(|camera| {
                 camera.move_camera(camera.get_view_direction() * 0.03);
             });
         }
 
-        if let Some(pressed_key_S) = self.pressed_key_S {
+        if let Some(pressed_key_s) = self.pressed_key_s {
             self.gO.camera.as_mut().map(|camera| {
                 camera.move_camera(camera.get_view_direction() * -0.03);  // or use move_backward(0.3)
             });
         }
 
-        if let Some(pressed_key_A) = self.pressed_key_A {
+        if let Some(pressed_key_a) = self.pressed_key_a {
             self.gO.camera.as_mut().map(|camera| {
                 camera.move_camera(camera.get_right() * -0.03);
             });
         }
 
-        if let Some(pressed_key_D) = self.pressed_key_D {
+        if let Some(pressed_key_d) = self.pressed_key_d {
             self.gO.camera.as_mut().map(|camera| {
                 camera.move_camera(camera.get_right() * 0.03);
             });

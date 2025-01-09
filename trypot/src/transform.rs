@@ -1,7 +1,6 @@
 
-use crate::math;
 
-use cgmath::{Deg, Euler, InnerSpace, Matrix4, Point3, Quaternion, Rad, Vector2, Vector3, BaseFloat, Basis3};
+use cgmath::{Euler, Point3, Quaternion, Rad, BaseFloat};
 
 #[derive(Clone, Copy)]
 pub struct Transform<S:BaseFloat> {
