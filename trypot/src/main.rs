@@ -418,6 +418,8 @@ impl VulkanApp {
                 index_count,
             }
         };
+
+        
         let teapot_go = GameObject::new_with_render_object(teapot_render_object);
         game_objects.push(teapot_go);
 

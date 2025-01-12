@@ -16,5 +16,5 @@ void main() {
     // vec3 lightDir = normalize(vec3(fragPos) - vec3(vLightPos));
     vec3 lightDir = normalize(vec3(vLightPos) - vec3(fragPos));
     float spec = dot(lightDir, fragNormals);
-    outColor = vec4(fragColor * spec, 1.0);
+    outColor = vec4(fragNormals * spec, 1.0);
 }
