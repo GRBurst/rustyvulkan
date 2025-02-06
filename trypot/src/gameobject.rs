@@ -1,6 +1,6 @@
 use crate::{camera::*, transform::*, fs};
 use ash::vk;
-use cgmath::{Point3, Quaternion};
+use cgmath::{Matrix4, Point3, Vector3, Quaternion};
 use std::mem::{size_of, offset_of};
 
 #[derive(Clone)]
@@ -8,6 +8,7 @@ pub struct GameObject {
     pub camera: Option<Camera>,
     pub transform: Transform<f32>,
     pub render_object: Option<RenderObject>,
+    pub model_matrix: Option<Matrix4<f32>>
 }
 
 impl GameObject {
@@ -16,6 +17,7 @@ impl GameObject {
             transform: Transform::new(Point3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)), 
             camera: None,
             render_object: None,
+            model_matrix: None
         }
     }
 
@@ -24,6 +26,7 @@ impl GameObject {
             transform: Transform::new(Point3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)), 
             camera: None,
             render_object: None,
+            model_matrix: None
         }
     }
 
@@ -32,6 +35,7 @@ impl GameObject {
             transform: Transform::new(Point3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)), 
             camera: cam,
             render_object: None,
+            model_matrix: None
         }
     }
 
@@ -40,6 +44,7 @@ impl GameObject {
             transform: Transform::new(Point3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)), 
             camera: None,
             render_object: Some(render_object),
+            model_matrix: None
         }
     }
 
@@ -48,11 +53,31 @@ impl GameObject {
             transform: Transform::new(Point3::new(0.0, 0.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)), 
             camera: cam,
             render_object: Some(render_object),
+            model_matrix: None
         }
     }
 
     pub fn print(&self) {
         println!("X: {} Y: {} Z: {}", self.transform.position.x, self.transform.position.y, self.transform.position.z )
+    }
+
+    pub fn move_forward(&mut self, amount: f32)  {
+        let forward = Vector3::new(0.0, 0.0, -1.0);
+        self.transform.position += self.transform.rotation * forward * amount;
+        println!("Player: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
+        
+        if let Some(camera) = self.camera.as_mut() {
+            camera.move_camera(self.transform.rotation * forward * amount);
+            println!("Camera: {}, {}, {}", camera.transform.position.x, camera.transform.position.y, camera.transform.position.z);
+        }
+    }
+
+    pub fn move_by(&mut self, x: f32, y: f32, z: f32) {
+        self.transform.position.x += x;
+        self.transform.position.y += y;
+        self.transform.position.z += z;
+
+        
     }
 }
 

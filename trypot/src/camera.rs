@@ -67,7 +67,7 @@ impl Camera {
     }
     
     pub fn print(&self) {
-        println!("Camera: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
+        //println!("Camera: {}, {}, {}", self.transform.position.x, self.transform.position.y, self.transform.position.z);
     }
 }
 

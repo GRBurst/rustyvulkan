@@ -1,3 +1,8 @@
+//TODO:
+// Rotation von GameObject implementieren -> soll auch Kamera korrekt drehen
+// Andere Bewegungsrichtungen von GameObject implementieren -> move_forward fertig 
+// Relation zwischen Kamera und gO muss geprüft werden
+
 mod camera;
 mod gameobject;
 mod transform;
@@ -2409,9 +2414,11 @@ impl VulkanApp {
 
         if let Some(pressed_key_w) = self.pressed_key_w {
             if let Some(player) = self.game_objects.get_mut(0) {
+                player.move_forward( 0.03 );
+                /*
                 if let Some(camera) = player.camera.as_mut() {
                     camera.move_camera(camera.get_view_direction() * 0.03);
-                }
+                }*/
             }
         }
 
@@ -2468,6 +2475,10 @@ impl VulkanApp {
                     device.unmap_memory(buffer_mem);
                 }
             }
+        }
+
+        if let Some(teapot) = self.game_objects.get_mut(2) {
+            teapot.transform.move_by(0.0, 10092.0, 0.0);
         }
     }
 }
