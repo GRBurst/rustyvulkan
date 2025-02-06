@@ -2414,6 +2414,7 @@ impl VulkanApp {
 
         if let Some(pressed_key_w) = self.pressed_key_w {
             if let Some(player) = self.game_objects.get_mut(0) {
+
                 player.move_forward( 0.03 );
                 /*
                 if let Some(camera) = player.camera.as_mut() {
@@ -2479,6 +2480,7 @@ impl VulkanApp {
 
         if let Some(teapot) = self.game_objects.get_mut(2) {
             teapot.transform.move_by(0.0, 10092.0, 0.0);
+
         }
     }
 }

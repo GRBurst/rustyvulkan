@@ -1,6 +1,7 @@
 use crate::{camera::*, transform::*, fs};
 use ash::vk;
 use cgmath::{Matrix4, Point3, Vector3, Quaternion};
+
 use std::mem::{size_of, offset_of};
 
 #[derive(Clone)]
@@ -9,7 +10,7 @@ pub struct GameObject {
     pub transform: Transform<f32>,
     pub render_object: Option<RenderObject>,
     pub model_matrix: Option<Matrix4<f32>>
-}
+
 
 impl GameObject {
     pub const fn default() -> GameObject {
@@ -18,6 +19,7 @@ impl GameObject {
             camera: None,
             render_object: None,
             model_matrix: None
+
         }
     }
 
@@ -27,6 +29,7 @@ impl GameObject {
             camera: None,
             render_object: None,
             model_matrix: None
+
         }
     }
 
@@ -54,6 +57,7 @@ impl GameObject {
             camera: cam,
             render_object: Some(render_object),
             model_matrix: None
+
         }
     }
 
