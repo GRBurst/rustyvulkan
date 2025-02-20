@@ -10,6 +10,7 @@ pub struct GameObject {
     pub transform: Transform<f32>,
     pub render_object: Option<RenderObject>,
     pub model_matrix: Option<Matrix4<f32>>
+}
 
 
 impl GameObject {
