@@ -1,19 +1,18 @@
-
-
-use cgmath::{Euler, Point3, Quaternion, Rad, BaseFloat};
+use cgmath::{Euler, Point3, Quaternion, Rad, BaseFloat, Vector3};
 
 #[derive(Clone, Copy)]
 pub struct Transform<S:BaseFloat> {
     pub position: Point3<S>,
-    pub rotation: Quaternion<S>
+    pub rotation: Quaternion<S>,
+    pub scale: Vector3<S>
 }
 
 impl<S:BaseFloat> Transform<S> {
     /// Construct a new quaternion from one scalar component and three
     /// imaginary components.
     #[inline]
-    pub const fn new(position:Point3<S>, rotation: Quaternion<S>) -> Transform<S> {
-        Transform {position: position, rotation: rotation}
+    pub const fn new(position:Point3<S>, rotation: Quaternion<S>, scale: Vector3<S>) -> Transform<S> {
+        Transform {position: position, rotation: rotation, scale: scale}
     }
 
     pub fn move_to_pos(&mut self, new_pos: Point3<S>) {
@@ -56,6 +55,23 @@ impl<S:BaseFloat> Transform<S> {
         
     }
     
+    pub fn get_local_position(&self) -> Vector3<S> {
+        Vector3::new(
+            self.position.x,
+            self.position.y,
+            self.position.z,
+        )
+    }
+}
+
+impl<S: BaseFloat> Default for Transform<S> {
+    fn default() -> Self {
+        Self {
+            position: Point3::new(S::zero(), S::zero(), S::zero()),
+            rotation: Quaternion::new(S::one(), S::zero(), S::zero(), S::zero()),
+            scale: Vector3::new(S::one(), S::one(), S::one()),
+        }
+    }
 }
 
 

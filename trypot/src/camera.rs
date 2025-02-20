@@ -1,9 +1,11 @@
-use crate::{math, transform::Transform};
+use crate::{math, transform::Transform, gameobject::GameObject};
 
-use cgmath::{Matrix4, Point3, Vector2, Vector3, Deg, Rad, InnerSpace, Quaternion};
+use cgmath::{Matrix4, Point3, Vector2, Vector3, Deg, Rad, InnerSpace, Quaternion, Matrix};
 use std::f32::consts::PI;
+use std::sync::Weak;
+use std::sync::Arc;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Camera {
     pub transform: Transform<f32>,
     h_fov: Deg<f32>,
@@ -11,9 +13,22 @@ pub struct Camera {
     far_plane: f32,
     horizontal_angle: f32,
     vertical_angle: f32,
+    parent: Weak<GameObject>,  // Reference to parent GameObject
 }
 
 impl Camera {
+
+    pub fn new(transform: Transform<f32>, parent: Weak<GameObject>) -> Self {
+        Self {
+            transform,
+            parent,
+            h_fov: Deg(45.0),
+            near_plane: 0.1,
+            far_plane: 1000.0,
+            horizontal_angle: PI,
+            vertical_angle: 0.0,
+        }
+    }
 
     pub fn get_right(&self) -> Vector3<f32> {
         Vector3::new(
@@ -29,6 +44,28 @@ impl Camera {
             self.vertical_angle.sin(),
             self.vertical_angle.cos() * self.horizontal_angle.cos(),
             ).normalize()
+    }
+
+    pub fn get_view_matrix(&self) -> Matrix4<f32> {
+        let parent_transform = self.parent
+            .upgrade()
+            .map(|parent| parent.transform.clone())
+            .unwrap_or_default();
+            
+        let local_pos = Vector3::new(
+            self.transform.position.x,
+            self.transform.position.y,
+            self.transform.position.z
+        );
+        
+        println!("Player (camera): {}, {}, {}", parent_transform.position.x, parent_transform.position.y, parent_transform.position.z);
+        let world_position = parent_transform.position + 
+            (parent_transform.rotation * local_pos);
+            
+        let world_rotation = parent_transform.rotation * self.transform.rotation;
+        
+        Matrix4::from(world_rotation).transpose() * 
+            Matrix4::from_translation(-Vector3::new(world_position.x, world_position.y, world_position.z))
     }
 
     pub fn get_up(&self) -> Vector3<f32> {
@@ -74,12 +111,21 @@ impl Camera {
 impl Default for Camera {
     fn default() -> Self {
         Camera {
-            transform: Transform::new(Point3::new(0.0, 1.0, 0.0), Quaternion::new(1.0, 0.0, 0.0, 0.0)),
+            transform: Transform::new(Point3::new(0.0, 1.0, 0.0), 
+                                      Quaternion::new(1.0, 0.0, 0.0, 0.0),
+                                         Vector3::new(1.0,1.0, 1.0)),
             h_fov: Deg(45.0),
             near_plane: 0.1,
             far_plane: 1000.0,
             horizontal_angle: PI,
             vertical_angle: 0.0,
+            parent: Weak::new(),
         }
+    }
+}
+
+impl Drop for Camera {
+    fn drop(&mut self) {
+        // Cleanup code if needed
     }
 }

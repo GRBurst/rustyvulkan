@@ -19,6 +19,7 @@ use crate::{
     debug::*,
     swapchain::*,
     texture::*,
+    transform::Transform,
     gameobject::{GameObject, RenderObject, Model, Vertex},
 };
 use ash::{
@@ -26,7 +27,7 @@ use ash::{
     khr::{surface, swapchain as khr_swapchain},
     vk, Device, Entry, Instance,
 };
-use cgmath::{Deg, Matrix4, Vector2, Rad, Vector3};
+use cgmath::{Deg, Matrix4, Vector2, Rad, Vector3, Point3, Quaternion};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
     ffi::{CStr, CString},
@@ -366,8 +367,14 @@ impl VulkanApp {
         let mut game_objects = Vec::new();
         
         // Add player game object with camera (no render object)
-        let camera = Camera::default();
-        let player = GameObject::new_with_camera(Some(camera));
+        let camera_transform = Transform::new(
+            Point3::new(0.0, 1.8, 0.0),  // Eye level height
+            Quaternion::new(1.0, 0.0, 0.0, 0.0),
+            Vector3::new(1.0, 1.0, 1.0)
+        );
+        
+        let mut player = GameObject::new_empty();
+        player.add_camera(camera_transform);
         game_objects.push(player);
 
         // Add plane game object (with render object, no camera)
@@ -2398,12 +2405,11 @@ impl VulkanApp {
             let theta = x_ratio * 180.0_f32.to_radians();
             let phi = -y_ratio * 90.0_f32.to_radians();
             if let Some(player) = self.game_objects.get_mut(0) { // Player is index 0
-                player.camera.as_mut().map(|camera| {
-                    camera.rotate(Vector2::new(Rad(theta), Rad(phi)));
-                });
+                player.rotate(phi, theta, 0.0_f32);
             }
+            
         });
-
+/*
         if let Some(wheel_delta) = self.wheel_delta {
             if let Some(player) = self.game_objects.get_mut(0) {
                 if let Some(camera) = player.camera.as_mut() {
@@ -2411,7 +2417,7 @@ impl VulkanApp {
                 }
             }
         }
-
+*/
         if let Some(pressed_key_w) = self.pressed_key_w {
             if let Some(player) = self.game_objects.get_mut(0) {
 
@@ -2425,41 +2431,46 @@ impl VulkanApp {
 
         if let Some(pressed_key_s) = self.pressed_key_s {
             if let Some(player) = self.game_objects.get_mut(0) {
+
+                player.move_forward( -0.03 );
+                /*
                 if let Some(camera) = player.camera.as_mut() {
-                    camera.move_camera(camera.get_view_direction() * -0.03);
-                }
+                    camera.move_camera(camera.get_view_direction() * 0.03);
+                }*/
             }
         }
 
         if let Some(pressed_key_a) = self.pressed_key_a {
             if let Some(player) = self.game_objects.get_mut(0) {
+                /*
                 if let Some(camera) = player.camera.as_mut() {
                     camera.move_camera(camera.get_right() * -0.03);
-                }
+                }*/
             }
         }
 
         if let Some(pressed_key_d) = self.pressed_key_d {
             if let Some(player) = self.game_objects.get_mut(0) {
+                /*
                 if let Some(camera) = player.camera.as_mut() {
                     camera.move_camera(camera.get_right() * 0.03);
-                }
+                }*/
             }
         }
 
         if let Some(player) = self.game_objects.get_mut(0) {
-            if let Some(camera) = player.camera.as_mut() {
+            /*if let Some(camera) = player.camera.as_mut() {
                 camera.print();
-            }
+            }*/
         }
 
         let aspect = self.swapchain_properties.extent.width as f32
             / self.swapchain_properties.extent.height as f32;
         if let Some(player) = self.game_objects.get_mut(0) {
-            if let Some(camera) = player.camera.as_mut() {
+            if let Some(camera) = player.camera_mut() {
                 let ubo = UniformBufferObject {
                     model: Matrix4::from_angle_x(Deg(0.0)),
-                    view: camera.look_to(camera.get_view_direction()),
+                    view: camera.get_view_matrix(),
                     proj: camera.get_projection_matrix(aspect),
                 };
                 let ubos = [ubo];
