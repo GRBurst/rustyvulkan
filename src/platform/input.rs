@@ -7,6 +7,11 @@ pub struct InputManager {
     pub wheel_delta: Option<f32>,
     pub pressed_keys: Vec<KeyCode>,
     pub last_cursor_position: Option<(f64, f64)>,
+    pub key_press: Option<KeyCode>,
+    pub pressed_key_w: Option<KeyCode>,
+    pub pressed_key_a: Option<KeyCode>,
+    pub pressed_key_s: Option<KeyCode>,
+    pub pressed_key_d: Option<KeyCode>,
 }
 
 pub enum InputEvent {

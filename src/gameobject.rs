@@ -1,4 +1,4 @@
-use crate::{camera::*, transform::*, fs};
+use crate::{scene::*, math::Transform, fs::*};
 use ash::vk;
 use cgmath::{Matrix4, Point3, Vector3, Quaternion};
 
@@ -104,7 +104,7 @@ pub struct Model {
 
 impl Model {
     pub fn load(path: &str) -> Self {
-        let mut cursor = fs::load(path);
+        let mut cursor = load(path);
         let (models, _) = tobj::load_obj_buf(
             &mut cursor,
             &tobj::LoadOptions {
