@@ -1,6 +1,5 @@
-use crate::{math, transform::Transform};
-
-use cgmath::{Matrix4, Point3, Vector2, Vector3, Deg, Rad, InnerSpace, Quaternion};
+use crate::{transform::Transform, math};
+use cgmath::{Matrix4, Point3, Deg, Rad, Vector2, Vector3, InnerSpace, Quaternion};
 use std::f32::consts::PI;
 
 #[derive(Clone, Copy)]

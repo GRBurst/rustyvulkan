@@ -3,6 +3,7 @@
 // Andere Bewegungsrichtungen von GameObject implementieren -> move_forward fertig 
 // Relation zwischen Kamera und gO muss geprüft werden
 
+mod core;
 mod camera;
 mod gameobject;
 mod transform;
@@ -12,6 +13,8 @@ mod fs;
 mod math;
 mod swapchain;
 mod texture;
+// Add platform module
+mod platform;
 
 use crate::{
     camera::*,
@@ -20,6 +23,7 @@ use crate::{
     swapchain::*,
     texture::*,
     gameobject::{GameObject, RenderObject, Model, Vertex},
+    platform::InputManager,
 };
 use ash::{
     ext::debug_utils,
@@ -33,25 +37,29 @@ use std::{
     mem::{align_of, offset_of, size_of, size_of_val},
 };
 use winit::{
-    dpi::PhysicalSize, event::{Event, MouseScrollDelta, WindowEvent, KeyEvent}, event_loop::{ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowBuilder}
+    dpi::PhysicalSize,
+    event::{Event, MouseScrollDelta, WindowEvent, KeyEvent},
+    event_loop::{ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
+    window::{Window, WindowBuilder}  // Use winit's Window directly
 };
 
-const WIDTH: u32 = 800;
-const HEIGHT: u32 = 600;
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 
 fn main() {
     env_logger::init();
 
+    let config = core::EngineConfig::default();
+
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);
     let window = WindowBuilder::new()
         .with_title("Vulkan tutorial with Ash")
-        .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT))
+        .with_inner_size(PhysicalSize::new(config.width, config.height))
         .build(&event_loop)
         .unwrap();
 
-    let mut app = VulkanApp::new(&window);
+    let mut app = VulkanApp::new(&window, &config);
     let mut dirty_swapchain = false;
 
     // Used to accumutate input events from the start to the end of a frame
@@ -262,7 +270,7 @@ struct VulkanApp {
 }
 
 impl VulkanApp {
-    fn new(window: &Window) -> Self {
+    fn new(window: &Window, config: &core::EngineConfig) -> Self {
         log::debug!("Creating application.");
 
         let entry = unsafe { Entry::load().expect("Failed to create entry.") };
@@ -305,7 +313,7 @@ impl VulkanApp {
         );
 
         let (swapchain, swapchain_khr, properties, images) =
-            Self::create_swapchain_and_images(&vk_context, queue_families_indices, [WIDTH, HEIGHT]);
+            Self::create_swapchain_and_images(&vk_context, queue_families_indices, [config.width, config.height]);
         let swapchain_image_views =
             Self::create_swapchain_image_views(vk_context.device(), &images, properties);
 
