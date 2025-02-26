@@ -1,2 +1,11 @@
 .direnv
 .rustup
+Cargo.lock
+
+/target
+
+/.vscode
+.idea
+
+**/*.rs.bk
+**/*.spv
