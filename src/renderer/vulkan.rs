@@ -14,6 +14,8 @@ use ash::vk::make_api_version;
 use crate::gameobject::Vertex;
 use super::{
     context::VkContext,
+    device::Buffer,
+    pipeline::Pipeline,
     swapchain::{SwapchainProperties, SwapchainSupportDetails},
 };
 
@@ -28,14 +30,11 @@ pub struct VulkanRenderer {
     images: Vec<vk::Image>,
     image_views: Vec<vk::ImageView>,
     render_pass: vk::RenderPass,
-    descriptor_set_layout: vk::DescriptorSetLayout,
-    pipeline_layout: vk::PipelineLayout,
-    pipeline: vk::Pipeline,
+    pipeline: Pipeline,
     framebuffers: Vec<vk::Framebuffer>,
     command_pool: vk::CommandPool,
     command_buffers: Vec<vk::CommandBuffer>,
-    vertex_buffer: vk::Buffer,
-    vertex_buffer_memory: vk::DeviceMemory,
+    vertex_buffer: Option<Buffer>,
     descriptor_pool: vk::DescriptorPool,
     descriptor_sets: Vec<vk::DescriptorSet>,
     image_available_semaphores: Vec<vk::Semaphore>,
@@ -74,8 +73,7 @@ impl VulkanRenderer {
         let render_pass = Self::create_render_pass(&context, properties);
 
         // Create graphics pipeline
-        let (descriptor_set_layout, pipeline_layout, pipeline) = 
-            Self::create_graphics_pipeline(&context, properties, render_pass);
+        let pipeline = Pipeline::new(&context, properties, render_pass);
 
         // Create framebuffers
         let framebuffers = Self::create_framebuffers(&context, &image_views, render_pass, properties);
@@ -85,7 +83,7 @@ impl VulkanRenderer {
         let command_buffers = Self::create_command_buffers(&context, command_pool, &framebuffers);
 
         let mut renderer = Self {
-            context,
+            context: context.clone(),
             swapchain_support,
             swapchain_loader,
             swapchain_khr,
@@ -93,14 +91,16 @@ impl VulkanRenderer {
             images,
             image_views,
             render_pass,
-            descriptor_set_layout,
-            pipeline_layout,
             pipeline,
             framebuffers,
             command_pool,
             command_buffers,
-            vertex_buffer: vk::Buffer::null(),
-            vertex_buffer_memory: vk::DeviceMemory::null(),
+            vertex_buffer: Some(Buffer::new(
+                &context,
+                (std::mem::size_of::<Vertex>() * VERTICES.len()) as u64,
+                vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            )),
             descriptor_pool: vk::DescriptorPool::null(),
             descriptor_sets: Vec::new(),
             image_available_semaphores: Vec::new(),
@@ -109,8 +109,45 @@ impl VulkanRenderer {
             current_frame: 0,
         };
 
-        // Create vertex buffer
-        renderer.create_vertex_buffer();
+        // Create staging buffer and copy vertex data
+        let staging_buffer = Buffer::new(
+            &context,
+            (std::mem::size_of::<Vertex>() * VERTICES.len()) as u64,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+
+        // Copy vertex data to staging buffer
+        unsafe {
+            let data_ptr = context
+                .device()
+                .map_memory(
+                    staging_buffer.get_memory(),
+                    0,
+                    (std::mem::size_of::<Vertex>() * VERTICES.len()) as u64,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .expect("Failed to map memory") as *mut Vertex;
+            data_ptr.copy_from_nonoverlapping(VERTICES.as_ptr(), VERTICES.len());
+            context.device().unmap_memory(staging_buffer.get_memory());
+        }
+
+        // Copy data from staging buffer to vertex buffer
+        Buffer::copy_to_buffer(
+            &context,
+            renderer.command_pool,
+            staging_buffer.get_buffer(),
+            renderer.vertex_buffer.as_ref().unwrap().get_buffer(),
+            (std::mem::size_of::<Vertex>() * VERTICES.len()) as u64,
+        );
+
+        // Wait for the device to be idle before cleaning up staging buffer
+        unsafe {
+            context.device().device_wait_idle().unwrap();
+        }
+
+        // Staging buffer will be cleaned up by its Drop implementation here
+        drop(staging_buffer);
 
         // Create descriptor pool and sets
         renderer.create_descriptor_pool();
@@ -426,166 +463,6 @@ impl VulkanRenderer {
         }
     }
 
-    fn create_graphics_pipeline(
-        context: &VkContext,
-        properties: SwapchainProperties,
-        render_pass: vk::RenderPass,
-    ) -> (vk::DescriptorSetLayout, vk::PipelineLayout, vk::Pipeline) {
-        // Read shader files
-        let vert_shader_code = std::fs::read("assets/shaders/shader.vert.spv")
-            .expect("Failed to read vertex shader");
-        let frag_shader_code = std::fs::read("assets/shaders/shader.frag.spv")
-            .expect("Failed to read fragment shader");
-
-        // Create shader modules
-        let vert_shader_module = Self::create_shader_module(context, &vert_shader_code);
-        let frag_shader_module = Self::create_shader_module(context, &frag_shader_code);
-
-        // Create shader stages
-        let entry_point_name = unsafe { CString::from_vec_unchecked(b"main".to_vec()) };
-        let shader_stages = [
-            vk::PipelineShaderStageCreateInfo::default()
-                .stage(vk::ShaderStageFlags::VERTEX)
-                .module(vert_shader_module)
-                .name(entry_point_name.as_c_str()),
-            vk::PipelineShaderStageCreateInfo::default()
-                .stage(vk::ShaderStageFlags::FRAGMENT)
-                .module(frag_shader_module)
-                .name(entry_point_name.as_c_str()),
-        ];
-
-        // Vertex input state
-        let binding_description = Vertex::get_binding_description();
-        let attribute_descriptions = Vertex::get_attribute_descriptions();
-        let binding_descriptions = [binding_description];
-        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default()
-            .vertex_binding_descriptions(&binding_descriptions)
-            .vertex_attribute_descriptions(&attribute_descriptions);
-
-        // Input assembly state
-        let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::default()
-            .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
-            .primitive_restart_enable(false);
-
-        // Viewport and scissor state
-        let viewport = vk::Viewport::default()
-            .x(0.0)
-            .y(0.0)
-            .width(properties.extent.width as f32)
-            .height(properties.extent.height as f32)
-            .min_depth(0.0)
-            .max_depth(1.0);
-
-        let scissor = vk::Rect2D::default()
-            .offset(vk::Offset2D { x: 0, y: 0 })
-            .extent(properties.extent);
-
-        let viewports = [viewport];
-        let scissors = [scissor];
-        let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-            .viewports(&viewports)
-            .scissors(&scissors);
-
-        // Rasterization state
-        let rasterization_state = vk::PipelineRasterizationStateCreateInfo::default()
-            .depth_clamp_enable(false)
-            .rasterizer_discard_enable(false)
-            .polygon_mode(vk::PolygonMode::FILL)
-            .line_width(1.0)
-            .cull_mode(vk::CullModeFlags::BACK)
-            .front_face(vk::FrontFace::CLOCKWISE)
-            .depth_bias_enable(false);
-
-        // Multisampling state
-        let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
-            .sample_shading_enable(false)
-            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
-
-        // Color blend state
-        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
-            .color_write_mask(vk::ColorComponentFlags::RGBA)
-            .blend_enable(false);
-
-        let color_blend_attachments = [color_blend_attachment];
-        let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
-            .logic_op_enable(false)
-            .attachments(&color_blend_attachments);
-
-        // Pipeline layout
-        let ubo_layout_binding = vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX);
-
-        let sampler_layout_binding = vk::DescriptorSetLayoutBinding::default()
-            .binding(1)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-
-        let layout_bindings = [ubo_layout_binding, sampler_layout_binding];
-        let descriptor_layout_info = vk::DescriptorSetLayoutCreateInfo::default()
-            .bindings(&layout_bindings);
-
-        let descriptor_set_layout = unsafe {
-            context.device().create_descriptor_set_layout(&descriptor_layout_info, None)
-                .expect("Failed to create descriptor set layout")
-        };
-
-        let set_layouts = [descriptor_set_layout];
-        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default()
-            .set_layouts(&set_layouts);
-
-        let pipeline_layout = unsafe {
-            context.device().create_pipeline_layout(&pipeline_layout_info, None)
-                .expect("Failed to create pipeline layout")
-        };
-
-        // Create graphics pipeline
-        let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
-            .stages(&shader_stages)
-            .vertex_input_state(&vertex_input_state)
-            .input_assembly_state(&input_assembly_state)
-            .viewport_state(&viewport_state)
-            .rasterization_state(&rasterization_state)
-            .multisample_state(&multisample_state)
-            .color_blend_state(&color_blend_state)
-            .layout(pipeline_layout)
-            .render_pass(render_pass)
-            .subpass(0);
-
-        let pipeline = unsafe {
-            context.device().create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                &[pipeline_info],
-                None,
-            )
-            .expect("Failed to create graphics pipeline")[0]
-        };
-
-        // Cleanup shader modules
-        unsafe {
-            context.device().destroy_shader_module(vert_shader_module, None);
-            context.device().destroy_shader_module(frag_shader_module, None);
-        }
-
-        (descriptor_set_layout, pipeline_layout, pipeline)
-    }
-
-    fn create_shader_module(context: &VkContext, code: &[u8]) -> vk::ShaderModule {
-        let create_info = vk::ShaderModuleCreateInfo::default()
-            .code(unsafe { std::slice::from_raw_parts(
-                code.as_ptr() as *const u32,
-                code.len() / 4,
-            )});
-
-        unsafe {
-            context.device().create_shader_module(&create_info, None)
-                .expect("Failed to create shader module")
-        }
-    }
-
     fn create_framebuffers(
         context: &VkContext,
         image_views: &[vk::ImageView],
@@ -717,11 +594,11 @@ impl VulkanRenderer {
             device.cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline,
+                self.pipeline.get_pipeline(),
             );
 
             // Bind vertex buffer
-            let vertex_buffers = [self.vertex_buffer];
+            let vertex_buffers = [self.vertex_buffer.as_ref().expect("Vertex buffer not initialized").get_buffer()];
             let offsets = [0];
             device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
 
@@ -931,8 +808,12 @@ impl VulkanRenderer {
             device.free_memory(staging_buffer_memory, None);
         }
 
-        self.vertex_buffer = vertex_buffer;
-        self.vertex_buffer_memory = vertex_buffer_memory;
+        self.vertex_buffer = Some(Buffer::new(
+            &self.context,
+            buffer_size,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ));
     }
 
     fn copy_buffer(&self, src_buffer: vk::Buffer, dst_buffer: vk::Buffer, size: vk::DeviceSize) {
@@ -1004,7 +885,7 @@ impl VulkanRenderer {
     }
 
     fn create_descriptor_sets(&mut self) {
-        let layouts = vec![self.descriptor_set_layout; MAX_FRAMES_IN_FLIGHT];
+        let layouts = vec![self.pipeline.get_descriptor_set_layout(); MAX_FRAMES_IN_FLIGHT];
         let alloc_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(self.descriptor_pool)
             .set_layouts(&layouts);
@@ -1054,14 +935,6 @@ impl VulkanRenderer {
         }
     }
 
-    fn cleanup_vertex_buffer(&mut self) {
-        unsafe {
-            let device = self.context.device();
-            device.destroy_buffer(self.vertex_buffer, None);
-            device.free_memory(self.vertex_buffer_memory, None);
-        }
-    }
-
     fn cleanup_descriptor_pool(&mut self) {
         unsafe {
             self.context
@@ -1074,40 +947,61 @@ impl VulkanRenderer {
 impl Drop for VulkanRenderer {
     fn drop(&mut self) {
         unsafe {
-            // Wait for the device to finish all operations
+            // Wait for the device to be idle before cleanup
             self.context.device().device_wait_idle().unwrap();
 
-            // Clean up synchronization objects
+            // Drop the vertex buffer first to ensure its command buffers are cleaned up
+            // before we destroy the command pool
+            if let Some(buffer) = self.vertex_buffer.take() {
+                std::mem::drop(buffer);
+            }
+
+            // Free command buffers first
+            if !self.command_buffers.is_empty() {
+                self.context.device().free_command_buffers(
+                    self.command_pool,
+                    &self.command_buffers,
+                );
+                self.command_buffers.clear();
+            }
+
+            // Cleanup synchronization objects
             self.cleanup_sync_objects();
 
-            // Clean up vertex buffer
-            self.cleanup_vertex_buffer();
+            // Free descriptor sets and destroy pool
+            if !self.descriptor_sets.is_empty() {
+                self.context.device().free_descriptor_sets(
+                    self.descriptor_pool,
+                    &self.descriptor_sets,
+                ).unwrap();
+                self.descriptor_sets.clear();
+            }
+            self.context.device().destroy_descriptor_pool(self.descriptor_pool, None);
 
-            // Clean up descriptor pool
-            self.cleanup_descriptor_pool();
+            // Destroy command pool
+            self.context.device().destroy_command_pool(self.command_pool, None);
 
-            // Clean up framebuffers
+            // Destroy framebuffers
             for framebuffer in &self.framebuffers {
                 self.context.device().destroy_framebuffer(*framebuffer, None);
             }
+            self.framebuffers.clear();
 
-            // Clean up graphics pipeline
-            self.context.device().destroy_pipeline(self.pipeline, None);
-            self.context.device().destroy_pipeline_layout(self.pipeline_layout, None);
+            // Destroy pipeline
+            self.context.device().destroy_pipeline(self.pipeline.get_pipeline(), None);
+            self.context.device().destroy_pipeline_layout(self.pipeline.get_layout(), None);
 
-            // Clean up render pass
+            // Destroy render pass
             self.context.device().destroy_render_pass(self.render_pass, None);
 
-            // Clean up swapchain image views
+            // Destroy image views
             for image_view in &self.image_views {
                 self.context.device().destroy_image_view(*image_view, None);
             }
+            self.image_views.clear();
 
-            // Clean up swapchain
+            // Destroy swapchain
             self.swapchain_loader.destroy_swapchain(self.swapchain_khr, None);
-
-            // Clean up command pool
-            self.context.device().destroy_command_pool(self.command_pool, None);
         }
     }
 }
