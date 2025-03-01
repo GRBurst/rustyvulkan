@@ -1,4 +1,4 @@
-use crate::{math, transform::Transform};
+use crate::math::{Transform, matrix::perspective};
 
 use cgmath::{Matrix4, Point3, Vector2, Vector3, Deg, Rad, InnerSpace, Quaternion};
 use std::f32::consts::PI;
@@ -63,7 +63,7 @@ impl Camera {
     }
 
     pub fn get_projection_matrix(&self, aspect: f32) -> Matrix4<f32> {
-        math::perspective(self.h_fov, aspect, self.near_plane, self.far_plane)
+        perspective(self.h_fov, aspect, self.near_plane, self.far_plane)
     }
     
     pub fn print(&self) {

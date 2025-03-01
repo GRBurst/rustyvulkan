@@ -3,6 +3,7 @@
 // Andere Bewegungsrichtungen von GameObject implementieren -> move_forward fertig 
 // Relation zwischen Kamera und gO muss geprüft werden
 
+/* OLD
 mod camera;
 mod gameobject;
 mod transform;
@@ -21,6 +22,25 @@ use crate::{
     texture::*,
     gameobject::{GameObject, RenderObject, Model, Vertex},
 };
+*/
+mod core;
+mod game;
+mod math;
+mod memory;
+mod platform;
+mod renderer;
+mod resources;
+mod scene;
+mod debug;
+
+use crate::{
+    platform::fs as fs,
+    renderer::*,
+    resources::*,
+    scene::*,
+    debug::*,
+};
+
 use ash::{
     ext::debug_utils,
     khr::{surface, swapchain as khr_swapchain},

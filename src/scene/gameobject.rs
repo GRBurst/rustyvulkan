@@ -1,4 +1,4 @@
-use crate::{camera::*, transform::*, fs};
+use crate::{scene::Camera, math::Transform, platform::fs as fs};
 use ash::vk;
 use cgmath::{Matrix4, Point3, Vector3, Quaternion};
 
