@@ -119,7 +119,7 @@ After each refactoring step:
 | Step | Description | Status | Date Completed | Notes |
 |------|-------------|--------|----------------|-------|
 | 1    | Extract Pipeline Logic | Completed | 2024-07-15 | Moved pipeline creation, shader loading/creation to `src/renderer/pipeline.rs` with proper documentation. Application verified working. |
-| 2    | Extract Resource Management | Not Started | | |
+| 2    | Extract Resource Management | Completed | 2024-07-15 | Refactored texture handling code to `src/resources/texture.rs`, including image loading, texture creation, depth/color textures, and memory management. Fixed memory type lookup to match the original implementation exactly. |
 | 3    | Extract Buffer Management | Not Started | | |
 | 4    | Extract Input Handling | Not Started | | |
 | 5    | Extract Window Management | Not Started | | |
@@ -137,4 +137,10 @@ After each refactoring step:
 - **Focused Changes**: Keeping changes narrowly focused on only the targeted functionality helps minimize the risk of introducing bugs.
 - **Module Structure**: Having a clear module structure with well-defined responsibilities makes the refactoring process smoother.
 - **Documentation**: Adding proper documentation during refactoring improves code maintainability and helps clarify function purposes.
-- **Verification Importance**: The verification process after each step is crucial to ensure no regressions are introduced. 
+- **Verification Importance**: The verification process after each step is crucial to ensure no regressions are introduced.
+
+### Learnings from Step 2: Extract Resource Management
+- **Exact Logic Duplication**: When refactoring low-level functionality like memory allocation, it's critical to exactly match the original implementation logic to avoid subtle bugs.
+- **Function Dependencies**: Understanding inter-function dependencies is essential when refactoring - we had to refactor memory management and buffer allocation together with texture handling.
+- **API Selection**: Using the right API methods is crucial - we encountered issues when using `memory_properties()` instead of `get_mem_properties()` despite them serving a similar purpose.
+- **Error Messages**: Detailed error messages helped pinpoint the exact location of issues, making debugging faster and more focused. 

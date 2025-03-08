@@ -1,4 +1,3 @@
-
 use ash::{Device, Entry, Instance};
 use ash::ext::debug_utils;
 use ash::vk::DebugUtilsMessengerEXT;
@@ -45,6 +44,10 @@ impl VkContext {
             self.instance
                 .get_physical_device_memory_properties(self.physical_device)
         }
+    }
+
+    pub fn memory_properties(&self) -> vk::PhysicalDeviceMemoryProperties {
+        self.mem_properties
     }
 
     pub fn find_supported_format(
