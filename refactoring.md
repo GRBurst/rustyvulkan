@@ -130,3 +130,11 @@ After each refactoring step:
 | 10   | Clean up main.rs | Not Started | | |
 | 11   | Add Error Handling | Not Started | | |
 | 12   | Add Documentation | Not Started | | | 
+
+## Refactoring Learnings
+
+### Learnings from Step 1: Extract Pipeline Logic
+- **Focused Changes**: Keeping changes narrowly focused on only the targeted functionality helps minimize the risk of introducing bugs.
+- **Module Structure**: Having a clear module structure with well-defined responsibilities makes the refactoring process smoother.
+- **Documentation**: Adding proper documentation during refactoring improves code maintainability and helps clarify function purposes.
+- **Verification Importance**: The verification process after each step is crucial to ensure no regressions are introduced. 
