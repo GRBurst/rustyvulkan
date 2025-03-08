@@ -14,27 +14,32 @@ mod scene;
 mod debug;
 
 use crate::{
-    platform::fs as fs,
+    platform::input::InputSystem,
     renderer::*,
-    renderer::buffer::{self, UniformBufferObject},
+    renderer::buffer,
     resources::*,
     scene::*,
     debug::*,
 };
 
-use ash::{
-    ext::debug_utils,
-    khr::{surface, swapchain as khr_swapchain},
-    vk, Device, Entry, Instance,
-};
-use cgmath::{Deg, Matrix4, Vector2, Rad, Vector3};
-use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use ash::{vk, Device, Entry, Instance};
+use ash::ext::debug_utils;
+use ash::khr::{surface, swapchain};
+
 use std::{
     ffi::{CStr, CString},
-    mem::{align_of, offset_of, size_of, size_of_val},
+    mem::{align_of, size_of},
 };
+
+use cgmath::{Deg, Matrix4, Vector3};
+
 use winit::{
-    dpi::PhysicalSize, event::{Event, MouseScrollDelta, WindowEvent, KeyEvent}, event_loop::{ControlFlow, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowBuilder}
+    dpi::PhysicalSize, 
+    event::{Event, WindowEvent}, 
+    event_loop::{ControlFlow, EventLoop}, 
+    keyboard::KeyCode, 
+    window::{Window, WindowBuilder},
+    raw_window_handle::{HasDisplayHandle, HasWindowHandle},
 };
 
 const WIDTH: u32 = 800;
@@ -55,166 +60,33 @@ fn main() {
     let mut app = VulkanApp::new(&window);
     let mut dirty_swapchain = false;
 
-    // Used to accumutate input events from the start to the end of a frame
-    
-    let mut is_cursor_captured: Option<bool> = None;
-    let mut wheel_delta: Option<f32> = None;
-    let mut mouse_delta: Option<[i32; 2]> = None;
-    let mut key_press = None;
-    let mut last_cursor_position: Option<(f64, f64)> = None;
-
     event_loop
         .run(move |event, elwt| {
             match event {
                 Event::NewEvents(_) => {
-                    // reset input states on new frame
-                    {
-                        is_cursor_captured = None;
-                        wheel_delta = None;
-                        mouse_delta = None;
-                        key_press = None;
-                    }
+                    // Input system will handle resetting input states
                 }
-                //TODO: refactor to Redraw Request?
                 Event::AboutToWait => {
-                    // update input state after accumulating event
-                  
-                    // render
-                    {
-                        if dirty_swapchain {
-                            let size = window.inner_size();
-                            if size.width > 0 && size.height > 0 {
-                                app.recreate_swapchain();
-                            } else {
-                                return;
-                            }
-                        }
-                        dirty_swapchain = app.draw_frame();
+                    // Draw a frame
+                    let resized = app.draw_frame();
+                    if resized || dirty_swapchain {
+                        app.recreate_swapchain();
+                        dirty_swapchain = false;
                     }
+                    
                     // Reset input states after processing
-                    app.wheel_delta = None;
-                    app.mouse_delta = None;
+                    app.input_system.reset_frame_state();
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => elwt.exit(),
                     WindowEvent::Resized { .. } => dirty_swapchain = true,
-                    WindowEvent::Focused(focused) => {
-                        if focused {
-                            // Capture and hide cursor when window gains focus
-                            window.set_cursor_grab(winit::window::CursorGrabMode::Confined)
-                                .or_else(|_e| window.set_cursor_grab(winit::window::CursorGrabMode::Locked))
-                                .unwrap();
-                            //window.set_cursor_visible(false);
-                            app.is_cursor_captured = true;
-                        } else {
-                            // Release cursor when window loses focus
-                            window.set_cursor_grab(winit::window::CursorGrabMode::None).unwrap();
-                           // window.set_cursor_visible(true);
-                            app.is_cursor_captured = false;
-                        }
-                    },
-                    WindowEvent::CursorMoved { position, .. } => {
-                        if let Some((last_x, last_y)) = last_cursor_position {
-                            // Only calculate delta if we're in captured mode
-                            if app.is_cursor_captured {
-                                app.mouse_delta = Some([
-                                    (position.x - last_x) as i32,
-                                    (position.y - last_y) as i32
-                                ]);
-                            }
-                        }
-                        last_cursor_position = Some((position.x, position.y));
-                        
-                        // Only center the cursor after recording the delta
-                        if app.is_cursor_captured {
-                            let window_size = window.inner_size();
-                            let center = winit::dpi::PhysicalPosition::new(
-                                window_size.width as f64 / 2.0,
-                                window_size.height as f64 / 2.0
-                            );
-                            // Only center if we've moved significantly from center to reduce events
-                            if (position.x - center.x).abs() > 2.0 || 
-                               (position.y - center.y).abs() > 2.0 {
-                                window.set_cursor_position(center).unwrap();
-                                // Update last position to center to avoid jumps
-                                last_cursor_position = Some((center.x, center.y));
-                            }
-                        }
-                    },
-                    WindowEvent::MouseWheel {
-                        delta: MouseScrollDelta::LineDelta(_, v_lines),
-                        ..
-                    } => {
-                        app.wheel_delta = Some(v_lines);
+                    // Let the input system handle all input-related events
+                    _ => {
+                        app.input_system.process_event(&event, &window);
                     }
-                    WindowEvent::KeyboardInput { 
-                        event: KeyEvent{
-                            physical_key: PhysicalKey::Code(KeyCode::KeyW),
-                            state,
-                            ..
-                        }, .. 
-                    } => {
-                        if state.is_pressed(){
-                            key_press = Some(KeyCode::KeyW);
-                        }
-                        else{
-                            key_press = None;
-                        }
-                        app.pressed_key_w = key_press;
-                        
-                    },
-                    WindowEvent::KeyboardInput { 
-                        event: KeyEvent{
-                            physical_key: PhysicalKey::Code(KeyCode::KeyA),
-                            state,
-                            ..
-                        }, .. 
-                    } => {
-                        if state.is_pressed(){
-                            key_press = Some(KeyCode::KeyA);
-                        }
-                        else{
-                            key_press = None;
-                        }
-                        app.pressed_key_a = key_press;
-                        
-                    },
-                    WindowEvent::KeyboardInput { 
-                        event: KeyEvent{
-                            physical_key: PhysicalKey::Code(KeyCode::KeyS),
-                            state,
-                            ..
-                        }, .. 
-                    } => {
-                        if state.is_pressed(){
-                            key_press = Some(KeyCode::KeyS);
-                        }
-                        else{
-                            key_press = None;
-                        }
-                        app.pressed_key_s = key_press;
-                        
-                    },
-                    WindowEvent::KeyboardInput { 
-                        event: KeyEvent{
-                            physical_key: PhysicalKey::Code(KeyCode::KeyD),
-                            state,
-                            ..
-                        }, .. 
-                    } => {
-                        if state.is_pressed(){
-                            key_press = Some(KeyCode::KeyD);
-                        }
-                        else{
-                            key_press = None;
-                        }
-                        app.pressed_key_d = key_press;
-                        
-                    },
-                    _ => (),
                 },
                 Event::LoopExiting => app.wait_gpu_idle(),
-                _ => (),
+                _ => {}
             }
         })
         .unwrap();
@@ -222,20 +94,15 @@ fn main() {
 
 struct VulkanApp {
     resize_dimensions: Option<[u32; 2]>,
-
-    is_cursor_captured: bool,
-    mouse_delta: Option<[i32; 2]>,
-    wheel_delta: Option<f32>,
-    pressed_key_w: Option<KeyCode>,
-    pressed_key_a: Option<KeyCode>,
-    pressed_key_s: Option<KeyCode>,
-    pressed_key_d: Option<KeyCode>,
+    
+    // New input system
+    input_system: InputSystem,
 
     vk_context: VkContext,
     queue_families_indices: QueueFamiliesIndices,
     graphics_queue: vk::Queue,
     present_queue: vk::Queue,
-    swapchain: khr_swapchain::Device,
+    swapchain: swapchain::Device,
     swapchain_khr: vk::SwapchainKHR,
     swapchain_properties: SwapchainProperties,
     images: Vec<vk::Image>,
@@ -463,13 +330,10 @@ impl VulkanApp {
         // Create the VulkanApp instance first without in_flight_frames
         let mut app = Self {
             resize_dimensions: None,
-            is_cursor_captured: false,
-            mouse_delta: None,
-            wheel_delta: None,
-            pressed_key_w: None,
-            pressed_key_a: None,
-            pressed_key_s: None,
-            pressed_key_d: None,
+            
+            // Initialize input system
+            input_system: InputSystem::new(),
+            
             vk_context,
             queue_families_indices,
             graphics_queue,
@@ -630,12 +494,12 @@ impl VulkanApp {
 
     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     fn get_required_device_extensions() -> [&'static CStr; 1] {
-        [khr_swapchain::NAME]
+        [swapchain::NAME]
     }
 
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn get_required_device_extensions() -> [&'static CStr; 2] {
-        [khr_swapchain::NAME, ash::khr::portability_subset::NAME]
+        [swapchain::NAME, ash::khr::portability_subset::NAME]
     }
 
     /// Find a queue family with at least one graphics queue and one with
@@ -748,7 +612,7 @@ impl VulkanApp {
         queue_families_indices: QueueFamiliesIndices,
         dimensions: [u32; 2],
     ) -> (
-        khr_swapchain::Device,
+        swapchain::Device,
         vk::SwapchainKHR,
         SwapchainProperties,
         Vec<vk::Image>,
@@ -811,7 +675,7 @@ impl VulkanApp {
             // .old_swapchain() We don't have an old swapchain but can't pass null
         };
 
-        let swapchain = khr_swapchain::Device::new(vk_context.instance(), vk_context.device());
+        let swapchain = swapchain::Device::new(vk_context.instance(), vk_context.device());
         let swapchain_khr = unsafe { swapchain.create_swapchain(&create_info, None).unwrap() };
         let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
         (swapchain, swapchain_khr, properties, images)
@@ -1405,76 +1269,70 @@ impl VulkanApp {
     }
 
     fn update_uniform_buffers(&mut self, current_image: u32) {
-        self.mouse_delta.take().map(|delta| {
-            let x_ratio = delta[0] as f32 / self.swapchain_properties.extent.width as f32;
-            let y_ratio = delta[1] as f32 / self.swapchain_properties.extent.height as f32;
-            let theta = x_ratio * 180.0_f32.to_radians();
-            let phi = -y_ratio * 90.0_f32.to_radians();
-            if let Some(player) = self.game_objects.get_mut(0) { // Player is index 0
-                player.camera.as_mut().map(|camera| {
-                    camera.rotate(Vector2::new(Rad(theta), Rad(phi)));
-                });
-            }
-        });
-
-        if let Some(wheel_delta) = self.wheel_delta {
-            if let Some(player) = self.game_objects.get_mut(0) {
-                if let Some(camera) = player.camera.as_mut() {
-                    camera.move_camera(Vector3::new(0.0_f32, 0.0_f32, wheel_delta * 0.3_f32))
-                }
-            }
-        }
-
-        if let Some(pressed_key_w) = self.pressed_key_w {
-            if let Some(player) = self.game_objects.get_mut(0) {
-
-                player.move_forward( 0.03 );
-                /*
-                if let Some(camera) = player.camera.as_mut() {
-                    camera.move_camera(camera.get_view_direction() * 0.03);
-                }*/
-            }
-        }
-
-        if let Some(pressed_key_s) = self.pressed_key_s {
-            if let Some(player) = self.game_objects.get_mut(0) {
-                if let Some(camera) = player.camera.as_mut() {
-                    camera.move_camera(camera.get_view_direction() * -0.03);
-                }
-            }
-        }
-
-        if let Some(pressed_key_a) = self.pressed_key_a {
-            if let Some(player) = self.game_objects.get_mut(0) {
-                if let Some(camera) = player.camera.as_mut() {
-                    camera.move_camera(camera.get_right() * -0.03);
-                }
-            }
-        }
-
-        if let Some(pressed_key_d) = self.pressed_key_d {
-            if let Some(player) = self.game_objects.get_mut(0) {
-                if let Some(camera) = player.camera.as_mut() {
-                    camera.move_camera(camera.get_right() * 0.03);
-                }
-            }
-        }
-
         if let Some(player) = self.game_objects.get_mut(0) {
-            if let Some(camera) = player.camera.as_mut() {
-                camera.print();
+            // Store camera movement directions based on input
+            let mut forward_movement = 0.0;
+            let mut right_movement = 0.0;
+            let mut up_movement = 0.0;
+            let mut rotation = None;
+            
+            // Check keyboard input
+            if self.input_system.is_key_pressed(KeyCode::KeyW) {
+                forward_movement += 0.03;
             }
-        }
-
-        let aspect = self.swapchain_properties.extent.width as f32
-            / self.swapchain_properties.extent.height as f32;
-        if let Some(player) = self.game_objects.get_mut(0) {
+            if self.input_system.is_key_pressed(KeyCode::KeyS) {
+                forward_movement -= 0.03;
+            }
+            if self.input_system.is_key_pressed(KeyCode::KeyA) {
+                right_movement -= 0.03;
+            }
+            if self.input_system.is_key_pressed(KeyCode::KeyD) {
+                right_movement += 0.03;
+            }
+            
+            // Get mouse movement
+            if let Some(delta) = self.input_system.take_mouse_delta() {
+                let sensitivity = 0.1;
+                rotation = Some((-delta.y * sensitivity, -delta.x * sensitivity));
+            }
+            
+            // Handle mouse wheel for zoom
+            if let Some(wheel_delta) = self.input_system.get_wheel_delta() {
+                up_movement = wheel_delta * 0.3;
+            }
+            
+            // Now apply movements to camera and player
             if let Some(camera) = player.camera.as_mut() {
+                // Apply rotation if any
+                if let Some((x_rot, y_rot)) = rotation {
+                    camera.rotate_camera(x_rot, y_rot);
+                }
+                
+                // Apply right/left movement
+                if right_movement != 0.0 {
+                    camera.move_camera(camera.get_right() * right_movement);
+                }
+                
+                // Apply up/down movement (from mouse wheel)
+                if up_movement != 0.0 {
+                    camera.move_camera(Vector3::new(0.0, 0.0, up_movement));
+                }
+                
+                // Handle backward movement directly on camera
+                if forward_movement < 0.0 {
+                    camera.move_camera(camera.get_view_direction() * forward_movement);
+                }
+                
+                // Set up UBO for rendering
                 let ubo = buffer::UniformBufferObject {
                     model: Matrix4::from_angle_x(Deg(0.0)),
                     view: camera.look_to(camera.get_view_direction()),
-                    proj: camera.get_projection_matrix(aspect),
+                    proj: camera.get_projection_matrix(
+                        self.swapchain_properties.extent.width as f32
+                            / self.swapchain_properties.extent.height as f32
+                    ),
                 };
+                
                 let ubos = [ubo];
 
                 let buffer_mem = self.uniform_buffer_memories[current_image as usize];
@@ -1484,16 +1342,16 @@ impl VulkanApp {
                     let data_ptr = device
                         .map_memory(buffer_mem, 0, size, vk::MemoryMapFlags::empty())
                         .unwrap();
-                    let mut align = ash::util::Align::new(data_ptr, align_of::<f32>() as _, size);
+                    let mut align = ash::util::Align::new(data_ptr, align_of::<Matrix4<f32>>() as _, size);
                     align.copy_from_slice(&ubos);
                     device.unmap_memory(buffer_mem);
                 }
             }
-        }
-
-        if let Some(teapot) = self.game_objects.get_mut(2) {
-            teapot.transform.move_by(0.0, 10092.0, 0.0);
-
+            
+            // Handle forward movement on the player (after camera operations are complete)
+            if forward_movement > 0.0 {
+                player.move_forward(forward_movement);
+            }
         }
     }
 }

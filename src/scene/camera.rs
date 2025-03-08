@@ -62,6 +62,17 @@ impl Camera {
         self.vertical_angle = (self.vertical_angle + degree.y.0) % (2.0*PI);
     }
 
+    /// Rotates the camera based on x and y inputs (in degrees)
+    ///
+    /// This is a convenience method that converts the input values to radians
+    /// and calls the rotate method.
+    pub fn rotate_camera(&mut self, x_degrees: f32, y_degrees: f32) {
+        // Convert to radians
+        let x_rad = Rad(x_degrees * PI / 180.0);
+        let y_rad = Rad(y_degrees * PI / 180.0);
+        self.rotate(Vector2::new(x_rad, y_rad));
+    }
+
     pub fn get_projection_matrix(&self, aspect: f32) -> Matrix4<f32> {
         perspective(self.h_fov, aspect, self.near_plane, self.far_plane)
     }

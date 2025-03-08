@@ -121,7 +121,7 @@ After each refactoring step:
 | 1    | Extract Pipeline Logic | Completed | 2024-07-15 | Moved pipeline creation, shader loading/creation to `src/renderer/pipeline.rs` with proper documentation. Application verified working. |
 | 2    | Extract Resource Management | Completed | 2024-07-15 | Refactored texture handling code to `src/resources/texture.rs`, including image loading, texture creation, depth/color textures, and memory management. Fixed memory type lookup to match the original implementation exactly. |
 | 3    | Extract Buffer Management | Completed | 2024-07-15 | Created `src/renderer/buffer.rs` module including vertex, index, and uniform buffer management. Made buffer functions public when needed by texture module. Added proper documentation for each function. |
-| 4    | Extract Input Handling | Not Started | | |
+| 4    | Extract Input Handling | Completed | 2024-07-15 | Implemented `src/platform/input.rs` with a dedicated InputSystem class for keyboard, mouse, and cursor handling. Updated main.rs to use the new system. Verified input functionality works correctly for camera and movement. |
 | 5    | Extract Window Management | Not Started | | |
 | 6    | Extract Rendering Loop | Not Started | | |
 | 7    | Complete GameObject Systems | Not Started | | |
@@ -149,4 +149,10 @@ After each refactoring step:
 - **Module Organization**: Using a modern Rust module approach (with individual files rather than mod.rs) helps maintain a cleaner directory structure.
 - **Public vs Private APIs**: It's important to carefully consider which functions need to be public for use by other modules (like `find_memory_type`).
 - **Dependency Management**: Buffer and texture handling have shared dependencies on memory management, showing the importance of proper abstraction boundaries.
-- **Type Traits**: Adding derive attributes like `#[derive(Copy, Clone)]` for data structures is important for allowing operations like memory copying. 
+- **Type Traits**: Adding derive attributes like `#[derive(Copy, Clone)]` for data structures is important for allowing operations like memory copying.
+
+### Learnings from Step 4: Extract Input Handling
+- **State Management**: Creating a dedicated input system allows for cleaner state management and separation of concerns.
+- **Borrowing Rules**: Rust's borrowing rules require careful design when sharing data between components (like player and camera objects).
+- **Functional Approach**: Using a more functional approach with well-defined state transitions helped avoid borrowing issues.
+- **Declarative API**: Creating a declarative API for the input system makes it easier to use and understand by abstracting away implementation details. 
