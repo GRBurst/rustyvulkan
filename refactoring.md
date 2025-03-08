@@ -122,7 +122,7 @@ After each refactoring step:
 | 2    | Extract Resource Management | Completed | 2024-07-15 | Refactored texture handling code to `src/resources/texture.rs`, including image loading, texture creation, depth/color textures, and memory management. Fixed memory type lookup to match the original implementation exactly. |
 | 3    | Extract Buffer Management | Completed | 2024-07-15 | Created `src/renderer/buffer.rs` module including vertex, index, and uniform buffer management. Made buffer functions public when needed by texture module. Added proper documentation for each function. |
 | 4    | Extract Input Handling | Completed | 2024-07-15 | Implemented `src/platform/input.rs` with a dedicated InputSystem class for keyboard, mouse, and cursor handling. Updated main.rs to use the new system. Verified input functionality works correctly for camera and movement. |
-| 5    | Extract Window Management | Not Started | | |
+| 5    | Extract Window Management | Completed | 2024-07-15 | Implemented `src/platform/window.rs` with a dedicated WindowSystem class. Also implemented resource manager to fix flickering issues during swapchain recreation, ensuring proper texture reuse and descriptor set recreation. Improved resource lifecycle management during window resize events. |
 | 6    | Extract Rendering Loop | Not Started | | |
 | 7    | Complete GameObject Systems | Not Started | | |
 | 8    | Implement Game State | Not Started | | |
@@ -155,4 +155,26 @@ After each refactoring step:
 - **State Management**: Creating a dedicated input system allows for cleaner state management and separation of concerns.
 - **Borrowing Rules**: Rust's borrowing rules require careful design when sharing data between components (like player and camera objects).
 - **Functional Approach**: Using a more functional approach with well-defined state transitions helped avoid borrowing issues.
-- **Declarative API**: Creating a declarative API for the input system makes it easier to use and understand by abstracting away implementation details. 
+- **Declarative API**: Creating a declarative API for the input system makes it easier to use and understand by abstracting away implementation details.
+
+### Learnings from Step 5: Extract Window Management
+- **Minimizing Changes**: Focusing on minimal changes to existing architecture helps maintain stability during refactoring.
+- **API Compatibility**: Window APIs can change between library versions, requiring adaptability (we had to update window handle APIs).
+- **Avoiding Ownership Complexity**: Keeping ownership models simple avoids issues where components might try to own resources that need external management.
+- **Progressive Refactoring**: Sometimes it's better to extract functionality without trying to redesign the entire architecture at once.
+- **Error Handling**: Proper error handling is critical in platform-specific code like window management, as system-level failures can occur.
+- **Asset Paths**: When refactoring code, it's important to ensure assets (like textures and models) can still be located correctly. The refactoring process helped us identify and fix an incorrect asset path.
+- **Buffer Lifecycle Management**: When recreating resources like swapchains, it's critical to properly clean up all associated resources, including buffers in game objects. We found and fixed an issue where game object buffers weren't being properly cleaned up during swapchain recreation, leading to validation errors.
+- **Remaining Resource Issues**: We still have some validation errors related to Vulkan objects not being destroyed at application exit. This suggests that there are additional resource lifecycle issues that will need to be addressed in a future step, possibly when implementing proper error handling (Step 11).
+- **Resource Caching**: Implementing resource caching for frequently used assets like textures significantly improves performance and stability during window resizing.
+- **Resource Reuse Strategy**: Preserving and reusing game objects and textures during swapchain recreation prevents flickering and visual artifacts.
+- **Descriptor Set Management**: Always recreate descriptor sets after updating uniform buffers to maintain proper bindings between resources.
+- **Lifecycle Dependencies**: Understanding resource dependencies (e.g., descriptor sets depending on buffers and textures) is crucial for proper recreation sequences.
+- **Swapchain Recreation Optimization**: A proper swapchain recreation strategy should preserve static resources while recreating only what's necessary.
+- **Resource Tracking for Cleanup**: Implementing a tracking system (like HashSets of handle identifiers) to prevent double-free issues is crucial for proper Vulkan resource cleanup. Without such tracking, validation errors can occur during application shutdown when attempting to free already destroyed resources. In a more comprehensive resource management system, a central registry of active resources would be maintained to ensure each resource is only freed once.
+- **Defensive Programming with Null Checks**: Adding null handle checks before destroying resources is essential in Vulkan applications to avoid validation errors. Checking `handle.as_raw() != 0` helps prevent attempting to destroy already-freed resources.
+- **Handle Invalidation**: After destroying a Vulkan resource, setting its handle to null (e.g., `handle = vk::Buffer::null()`) prevents accidental reuse and double-free issues.
+- **Mutable Iteration**: Using `iter_mut()` instead of `iter()` when cleaning up resources allows setting handles to null after destruction, improving safety.
+- **Explicit Descriptor Management**: Clear descriptor set lists after resetting the descriptor pool to prevent stale references.
+- **Validation Layer Messages**: Carefully analyze validation layer messages - they often point to deeper architectural issues in resource management rather than simple bugs.
+- **Texture Resource Management**: Special care is needed for textures that contain multiple Vulkan objects (image, memory, view, sampler). Each must be properly nullified after destruction. 

@@ -1,4 +1,9 @@
-use ash::{vk, Device};
+use ash::{
+    Device,
+    vk::{self, Format, ImageTiling, ImageUsageFlags, MemoryPropertyFlags, SampleCountFlags, SurfaceKHR},
+    khr::swapchain,
+    vk::Handle,
+};
 use std::cmp::max;
 use std::ffi::CString;
 use std::ptr;
@@ -44,9 +49,21 @@ impl Texture {
             if let Some(sampler) = self.sampler.take() {
                 device.destroy_sampler(sampler, None);
             }
-            device.destroy_image_view(self.view, None);
-            device.destroy_image(self.image, None);
-            device.free_memory(self.memory, None);
+            
+            if self.view.as_raw() != 0 {
+                device.destroy_image_view(self.view, None);
+                self.view = vk::ImageView::null();
+            }
+            
+            if self.image.as_raw() != 0 {
+                device.destroy_image(self.image, None);
+                self.image = vk::Image::null();
+            }
+            
+            if self.memory.as_raw() != 0 {
+                device.free_memory(self.memory, None);
+                self.memory = vk::DeviceMemory::null();
+            }
         }
     }
 

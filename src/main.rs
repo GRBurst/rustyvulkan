@@ -15,16 +15,23 @@ mod debug;
 
 use crate::{
     platform::input::InputSystem,
+    platform::window::{WindowSystem, WindowConfig},
     renderer::*,
     renderer::buffer,
     resources::*,
     scene::*,
-    debug::*,
+    scene::camera::Camera,
+    debug::{
+        setup_debug_messenger, 
+        ENABLE_VALIDATION_LAYERS,
+        get_layer_names_and_pointers,
+        check_validation_layer_support
+    }
 };
-
 use ash::{vk, Device, Entry, Instance};
 use ash::ext::debug_utils;
 use ash::khr::{surface, swapchain};
+use ash::vk::Handle;
 
 use std::{
     ffi::{CStr, CString},
@@ -34,14 +41,14 @@ use std::{
 use cgmath::{Deg, Matrix4, Vector3};
 
 use winit::{
-    dpi::PhysicalSize, 
     event::{Event, WindowEvent}, 
-    event_loop::{ControlFlow, EventLoop}, 
+    event_loop::{ControlFlow, EventLoop},
     keyboard::KeyCode, 
-    window::{Window, WindowBuilder},
-    raw_window_handle::{HasDisplayHandle, HasWindowHandle},
+    window::Window,
+    raw_window_handle::HasDisplayHandle,
 };
 
+// Constants moved to the top of the file for better organization
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
 const MAX_FRAMES_IN_FLIGHT: u32 = 2;
@@ -49,19 +56,29 @@ const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 fn main() {
     env_logger::init();
 
-    let event_loop = EventLoop::new().unwrap();
-    event_loop.set_control_flow(ControlFlow::Poll);
-    let window = WindowBuilder::new()
-        .with_title("Vulkan tutorial with Ash")
-        .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT))
-        .build(&event_loop)
-        .unwrap();
-
-    let mut app = VulkanApp::new(&window);
+    // Create the event loop
+    let event_loop = EventLoop::new().expect("Failed to create event loop");
+    
+    // Create window system
+    let mut window_system = WindowSystem::new(
+        WindowConfig {
+            title: "Vulkan tutorial with Ash".to_string(),
+            width: WIDTH,
+            height: HEIGHT,
+            resizable: true,
+        },
+        &event_loop
+    );
+    
+    let mut app = VulkanApp::new(window_system);
     let mut dirty_swapchain = false;
 
+    // Run the event loop
     event_loop
         .run(move |event, elwt| {
+            // Set the control flow to poll mode
+            elwt.set_control_flow(ControlFlow::Poll);
+            
             match event {
                 Event::NewEvents(_) => {
                     // Input system will handle resetting input states
@@ -79,10 +96,13 @@ fn main() {
                 }
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => elwt.exit(),
-                    WindowEvent::Resized { .. } => dirty_swapchain = true,
+                    WindowEvent::Resized(size) => {
+                        app.window_system.record_resize(size.width, size.height);
+                        dirty_swapchain = true;
+                    },
                     // Let the input system handle all input-related events
                     _ => {
-                        app.input_system.process_event(&event, &window);
+                        app.input_system.process_event(&event, app.window_system.window());
                     }
                 },
                 Event::LoopExiting => app.wait_gpu_idle(),
@@ -93,7 +113,7 @@ fn main() {
 }
 
 struct VulkanApp {
-    resize_dimensions: Option<[u32; 2]>,
+    window_system: WindowSystem,
     
     // New input system
     input_system: InputSystem,
@@ -130,23 +150,15 @@ struct VulkanApp {
 }
 
 impl VulkanApp {
-    fn new(window: &Window) -> Self {
+    fn new(window_system: WindowSystem) -> Self {
         log::debug!("Creating application.");
 
+        let window = window_system.window();
         let entry = unsafe { Entry::load().expect("Failed to create entry.") };
         let instance = Self::create_instance(&entry, window);
 
-        let surface = surface::Instance::new(&entry, &instance);
-        let surface_khr = unsafe {
-            ash_window::create_surface(
-                &entry,
-                &instance,
-                window.display_handle().unwrap().as_raw(),
-                window.window_handle().unwrap().as_raw(),
-                None,
-            )
-            .unwrap()
-        };
+        // Create surface using the window system
+        let (surface, surface_khr) = window_system.create_surface(&entry, &instance);
 
         let debug_report_callback = setup_debug_messenger(&entry, &instance);
 
@@ -172,8 +184,9 @@ impl VulkanApp {
             device.clone(),
         );
 
+        let dimensions = window_system.get_dimensions();
         let (swapchain, swapchain_khr, properties, images) =
-            Self::create_swapchain_and_images(&vk_context, queue_families_indices, [WIDTH, HEIGHT]);
+            Self::create_swapchain_and_images(&vk_context, queue_families_indices, dimensions);
         let swapchain_image_views =
             Self::create_swapchain_image_views(vk_context.device(), &images, properties);
 
@@ -219,6 +232,18 @@ impl VulkanApp {
             msaa_samples,
         );
 
+        let texture = texture::Texture::load_from_file(
+            &vk_context,
+            command_pool,
+            graphics_queue,
+            "images/chalet.jpg",
+        );
+
+        let game_objects = Self::create_game_objects(&vk_context, command_pool, graphics_queue);
+
+        let (uniform_buffers, uniform_buffer_memories) =
+            buffer::create_uniform_buffers(&vk_context, images.len());
+
         let swapchain_framebuffers = Self::create_framebuffers(
             vk_context.device(),
             &swapchain_image_views,
@@ -228,84 +253,8 @@ impl VulkanApp {
             properties,
         );
 
-        let texture = Texture::load_from_file(
-            &vk_context,
-            transient_command_pool,
-            graphics_queue,
-            "images/chalet.jpg",
-        );
+        let descriptor_pool = Self::create_descriptor_pool(vk_context.device(), images.len() as u32);
 
-        // Create game objects
-        let mut game_objects = Vec::new();
-        
-        // Add player game object with camera (no render object)
-        let camera = Camera::default();
-        let player = GameObject::new_with_camera(Some(camera));
-        game_objects.push(player);
-
-        // Add plane game object (with render object, no camera)
-        let plane_render_object = {
-            let plane_model = Model::load("models/plane.obj");
-            let (vertex_buffer, vertex_buffer_memory) = buffer::create_vertex_buffer(
-                &vk_context,
-                transient_command_pool,
-                graphics_queue,
-                &plane_model.vertices,
-            );
-            let (index_buffer, index_buffer_memory) = buffer::create_index_buffer(
-                &vk_context,
-                transient_command_pool,
-                graphics_queue,
-                &plane_model.indices,
-            );
-            let index_count = plane_model.indices.len();
-            RenderObject {
-                model: plane_model,
-                vertex_buffer,
-                vertex_buffer_memory,
-                index_buffer,
-                index_buffer_memory,
-                index_count,
-            }
-        };
-        let plane_go = GameObject::new_with_render_object(plane_render_object);
-        game_objects.push(plane_go);
-
-        // Add teapot game object (with render object, no camera)
-        let teapot_render_object = {
-            let teapot_model = Model::load("models/teapot.obj");
-            let (vertex_buffer, vertex_buffer_memory) = buffer::create_vertex_buffer(
-                &vk_context,
-                transient_command_pool,
-                graphics_queue,
-                &teapot_model.vertices,
-            );
-            let (index_buffer, index_buffer_memory) = buffer::create_index_buffer(
-                &vk_context,
-                transient_command_pool,
-                graphics_queue,
-                &teapot_model.indices,
-            );
-            let index_count = teapot_model.indices.len();
-            RenderObject {
-                model: teapot_model,
-                vertex_buffer,
-                vertex_buffer_memory,
-                index_buffer,
-                index_buffer_memory,
-                index_count,
-            }
-        };
-
-        
-        let teapot_go = GameObject::new_with_render_object(teapot_render_object);
-        game_objects.push(teapot_go);
-
-        // Create uniform buffers and descriptor sets first
-        let (uniform_buffers, uniform_buffer_memories) =
-            buffer::create_uniform_buffers(&vk_context, images.len());
-
-        let descriptor_pool = Self::create_descriptor_pool(vk_context.device(), images.len() as _);
         let descriptor_sets = Self::create_descriptor_sets(
             vk_context.device(),
             descriptor_pool,
@@ -314,22 +263,21 @@ impl VulkanApp {
             texture,
         );
 
-        // Then create command buffers
+        // Create command buffers
         let command_buffers = Self::create_and_register_command_buffers(
-            &device,
+            vk_context.device(),
             command_pool,
             &swapchain_framebuffers,
             render_pass,
             properties,
             &game_objects,
             layout,
-            &descriptor_sets,  // Now descriptor_sets exists
+            &descriptor_sets,
             pipeline,
         );
 
-        // Create the VulkanApp instance first without in_flight_frames
         let mut app = Self {
-            resize_dimensions: None,
+            window_system,
             
             // Initialize input system
             input_system: InputSystem::new(),
@@ -382,7 +330,7 @@ impl VulkanApp {
             .api_version(vk::make_api_version(0, 1, 0, 0));
 
         let extension_names =
-            ash_window::enumerate_required_extensions(window.display_handle().unwrap().as_raw())
+            ash_window::enumerate_required_extensions(window.display_handle().expect("Failed to get display handle").as_raw())
                 .unwrap();
         let mut extension_names = extension_names.to_vec();
         if ENABLE_VALIDATION_LAYERS {
@@ -1167,10 +1115,10 @@ impl VulkanApp {
         self.wait_gpu_idle();
         self.cleanup_swapchain();
 
-        let dimensions = self
-            .resize_dimensions
-            .take()
-            .unwrap_or([WIDTH, HEIGHT]);
+        // Get dimensions from window_system
+        let dimensions = self.window_system.take_resize_dimensions()
+            .unwrap_or_else(|| self.window_system.get_dimensions());
+            
         let (swapchain, swapchain_khr, properties, images) = Self::create_swapchain_and_images(
             &self.vk_context,
             self.queue_families_indices,
@@ -1213,6 +1161,24 @@ impl VulkanApp {
             self.msaa_samples,
         );
 
+        // We'll reuse the existing texture instead of reloading it from disk
+        // This prevents flickering by avoiding the texture reload process
+        // In a more comprehensive resource manager, this would be handled more elegantly
+        
+        // Create new uniform buffers sized appropriately for the new swapchain
+        let (uniform_buffers, uniform_buffer_memories) =
+            buffer::create_uniform_buffers(&self.vk_context, images.len());
+
+        // Important: Recreate descriptor sets to bind the new uniform buffers
+        // This was missing and likely caused the flickering
+        let descriptor_sets = Self::create_descriptor_sets(
+            self.vk_context.device(),
+            self.descriptor_pool,
+            self.descriptor_set_layout,
+            &uniform_buffers,
+            self.texture, // Reuse existing texture
+        );
+
         let swapchain_framebuffers = Self::create_framebuffers(
             self.vk_context.device(),
             &swapchain_image_views,
@@ -1222,15 +1188,17 @@ impl VulkanApp {
             properties,
         );
 
+        // We'll reuse the existing game objects instead of recreating them
+        // This preserves game state and prevents model reloading
         let command_buffers = Self::create_and_register_command_buffers(
-            &self.vk_context.device(),
+            self.vk_context.device(),
             self.command_pool,
             &swapchain_framebuffers,
             render_pass,
             properties,
-            &self.game_objects,
+            &self.game_objects, // Use existing game objects
             layout,
-            &self.descriptor_sets,
+            &descriptor_sets,
             pipeline,
         );
 
@@ -1240,11 +1208,19 @@ impl VulkanApp {
         self.images = images;
         self.swapchain_image_views = swapchain_image_views;
         self.render_pass = render_pass;
-        self.pipeline = pipeline;
         self.pipeline_layout = layout;
+        self.pipeline = pipeline;
+        self.swapchain_framebuffers = swapchain_framebuffers;
         self.color_texture = color_texture;
         self.depth_texture = depth_texture;
-        self.swapchain_framebuffers = swapchain_framebuffers;
+        // We don't reassign the texture as we're reusing it
+        // self.texture = texture;
+        // We don't clear game objects as we're preserving them
+        // self.render_objects = Vec::new();  
+        // self.game_objects = game_objects;  
+        self.uniform_buffers = uniform_buffers;
+        self.uniform_buffer_memories = uniform_buffer_memories;
+        self.descriptor_sets = descriptor_sets;
         self.command_buffers = command_buffers;
     }
 
@@ -1252,19 +1228,85 @@ impl VulkanApp {
     fn cleanup_swapchain(&mut self) {
         let device = self.vk_context.device();
         unsafe {
+            // We no longer clean up game object resources since we're preserving them
+            // for game_object in &self.game_objects {
+            //     if let Some(render_object) = &game_object.render_object {
+            //         device.destroy_buffer(render_object.vertex_buffer, None);
+            //         device.free_memory(render_object.vertex_buffer_memory, None);
+            //         device.destroy_buffer(render_object.index_buffer, None);
+            //         device.free_memory(render_object.index_buffer_memory, None);
+            //     }
+            // }
+            
             self.depth_texture.destroy(device);
             self.color_texture.destroy(device);
             self.swapchain_framebuffers
                 .iter()
                 .for_each(|f| device.destroy_framebuffer(*f, None));
             device.free_command_buffers(self.command_pool, &self.command_buffers);
-            device.destroy_pipeline(self.pipeline, None);
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
-            device.destroy_render_pass(self.render_pass, None);
+            
+            if self.pipeline.as_raw() != 0 {
+                device.destroy_pipeline(self.pipeline, None);
+                // Zero out the handle to prevent double-free
+                self.pipeline = vk::Pipeline::null();
+            }
+            
+            if self.pipeline_layout.as_raw() != 0 {
+                device.destroy_pipeline_layout(self.pipeline_layout, None);
+                // Zero out the handle to prevent double-free
+                self.pipeline_layout = vk::PipelineLayout::null();
+            }
+            
+            if self.render_pass.as_raw() != 0 {
+                device.destroy_render_pass(self.render_pass, None);
+                // Zero out the handle to prevent double-free
+                self.render_pass = vk::RenderPass::null();
+            }
+            
             self.swapchain_image_views
-                .iter()
-                .for_each(|v| device.destroy_image_view(*v, None));
-            self.swapchain.destroy_swapchain(self.swapchain_khr, None);
+                .iter_mut()
+                .for_each(|v| {
+                    if v.as_raw() != 0 {
+                        device.destroy_image_view(*v, None);
+                        *v = vk::ImageView::null();
+                    }
+                });
+                
+            if self.swapchain_khr.as_raw() != 0 {
+                self.swapchain.destroy_swapchain(self.swapchain_khr, None);
+                self.swapchain_khr = vk::SwapchainKHR::null();
+            }
+            
+            // Clean up uniform buffers and their memory
+            // These will be recreated with the new swapchain
+            if !self.uniform_buffers.is_empty() {
+                self.uniform_buffer_memories
+                    .iter_mut()
+                    .for_each(|m| {
+                        if m.as_raw() != 0 {
+                            device.free_memory(*m, None);
+                            *m = vk::DeviceMemory::null();
+                        }
+                    });
+                    
+                self.uniform_buffers
+                    .iter_mut()
+                    .for_each(|b| {
+                        if b.as_raw() != 0 {
+                            device.destroy_buffer(*b, None);
+                            *b = vk::Buffer::null();
+                        }
+                    });
+            }
+            
+            // We don't destroy descriptor sets here - they're cleaned up when the pool is destroyed
+            // but we should reset the descriptor pool to reuse it
+            if !self.descriptor_sets.is_empty() {
+                device.reset_descriptor_pool(self.descriptor_pool, vk::DescriptorPoolResetFlags::empty())
+                    .expect("Failed to reset descriptor pool!");
+                // Clear the descriptor sets list
+                self.descriptor_sets.clear();
+            }
         }
     }
 
@@ -1354,37 +1396,143 @@ impl VulkanApp {
             }
         }
     }
+
+    /// Creates game objects for the scene
+    fn create_game_objects(
+        vk_context: &VkContext,
+        command_pool: vk::CommandPool,
+        graphics_queue: vk::Queue,
+    ) -> Vec<GameObject> {
+        let mut game_objects = Vec::new();
+        
+        // Add player game object with camera (no render object)
+        let camera = Camera::default();
+        let player = GameObject::new_with_camera(Some(camera));
+        game_objects.push(player);
+
+        // Add plane game object (with render object, no camera)
+        let plane_render_object = {
+            let plane_model = Model::load("models/plane.obj");
+            let (vertex_buffer, vertex_buffer_memory) = buffer::create_vertex_buffer(
+                vk_context,
+                command_pool,
+                graphics_queue,
+                &plane_model.vertices,
+            );
+            let (index_buffer, index_buffer_memory) = buffer::create_index_buffer(
+                vk_context,
+                command_pool,
+                graphics_queue,
+                &plane_model.indices,
+            );
+            let index_count = plane_model.indices.len();
+            RenderObject {
+                model: plane_model,
+                vertex_buffer,
+                vertex_buffer_memory,
+                index_buffer,
+                index_buffer_memory,
+                index_count,
+            }
+        };
+        let plane_go = GameObject::new_with_render_object(plane_render_object);
+        game_objects.push(plane_go);
+
+        // Add teapot game object (with render object, no camera)
+        let teapot_render_object = {
+            let teapot_model = Model::load("models/teapot.obj");
+            let (vertex_buffer, vertex_buffer_memory) = buffer::create_vertex_buffer(
+                vk_context,
+                command_pool,
+                graphics_queue,
+                &teapot_model.vertices,
+            );
+            let (index_buffer, index_buffer_memory) = buffer::create_index_buffer(
+                vk_context,
+                command_pool,
+                graphics_queue,
+                &teapot_model.indices,
+            );
+            let index_count = teapot_model.indices.len();
+            RenderObject {
+                model: teapot_model,
+                vertex_buffer,
+                vertex_buffer_memory,
+                index_buffer,
+                index_buffer_memory,
+                index_count,
+            }
+        };
+        
+        let teapot_go = GameObject::new_with_render_object(teapot_render_object);
+        game_objects.push(teapot_go);
+        
+        game_objects
+    }
 }
 
 impl Drop for VulkanApp {
     fn drop(&mut self) {
         log::debug!("Dropping application.");
+        self.wait_gpu_idle();
+        
+        // First clean up all resources that depend on the swapchain
         self.cleanup_swapchain();
 
         let device = self.vk_context.device();
-        self.in_flight_frames.destroy(device);
+        
+        // Clean up game object resources with null checks
         unsafe {
-            device.destroy_descriptor_pool(self.descriptor_pool, None);
-            device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
-            self.uniform_buffer_memories
-                .iter()
-                .for_each(|m| device.free_memory(*m, None));
-            self.uniform_buffers
-                .iter()
-                .for_each(|b| device.destroy_buffer(*b, None));
-            self.texture.destroy(device);
-            device.destroy_command_pool(self.transient_command_pool, None);
-            device.destroy_command_pool(self.command_pool, None);
-            
-            // Clean up render objects
             for game_object in &self.game_objects {
                 if let Some(render_object) = &game_object.render_object {
-                    device.destroy_buffer(render_object.vertex_buffer, None);
-                    device.free_memory(render_object.vertex_buffer_memory, None);
-                    device.destroy_buffer(render_object.index_buffer, None);
-                    device.free_memory(render_object.index_buffer_memory, None);
+                    // Check for null/zero handle before destroying
+                    // A zero handle indicates an invalid/already destroyed resource
+                    if render_object.vertex_buffer.as_raw() != 0 {
+                        device.destroy_buffer(render_object.vertex_buffer, None);
+                    }
+                    
+                    if render_object.vertex_buffer_memory.as_raw() != 0 {
+                        device.free_memory(render_object.vertex_buffer_memory, None);
+                    }
+                    
+                    if render_object.index_buffer.as_raw() != 0 {
+                        device.destroy_buffer(render_object.index_buffer, None);
+                    }
+                    
+                    if render_object.index_buffer_memory.as_raw() != 0 {
+                        device.free_memory(render_object.index_buffer_memory, None);
+                    }
                 }
             }
+        }
+        
+        // Clean up synchronization objects
+        self.in_flight_frames.destroy(device);
+        
+        unsafe {
+            // Clean up descriptor resources
+            device.destroy_descriptor_pool(self.descriptor_pool, None);
+            device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+            
+            // Clean up uniform buffers with null checks
+            for buffer in &self.uniform_buffers {
+                if buffer.as_raw() != 0 {
+                    device.destroy_buffer(*buffer, None);
+                }
+            }
+            
+            for memory in &self.uniform_buffer_memories {
+                if memory.as_raw() != 0 {
+                    device.free_memory(*memory, None);
+                }
+            }
+                
+            // Clean up texture resources
+            self.texture.destroy(device);
+            
+            // Clean up command pools
+            device.destroy_command_pool(self.transient_command_pool, None);
+            device.destroy_command_pool(self.command_pool, None);
         }
     }
 }
