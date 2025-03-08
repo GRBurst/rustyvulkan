@@ -118,7 +118,7 @@ After each refactoring step:
 
 | Step | Description | Status | Date Completed | Notes |
 |------|-------------|--------|----------------|-------|
-| 1    | Extract Pipeline Logic | Not Started | | |
+| 1    | Extract Pipeline Logic | Completed | 2024-07-15 | Moved pipeline creation, shader loading/creation to `src/renderer/pipeline.rs` with proper documentation. Application verified working. |
 | 2    | Extract Resource Management | Not Started | | |
 | 3    | Extract Buffer Management | Not Started | | |
 | 4    | Extract Input Handling | Not Started | | |
