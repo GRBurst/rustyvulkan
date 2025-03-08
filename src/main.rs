@@ -1224,20 +1224,19 @@ impl VulkanApp {
         self.command_buffers = command_buffers;
     }
 
-    /// Clean up the swapchain and all resources that depends on it.
+    /// Clean up the swapchain and all resources that depend on it.
+    /// 
+    /// This method uses a defensive approach to resource cleanup:
+    /// 1. It avoids cleaning up game object resources to preserve them during swapchain recreation
+    /// 2. It checks for null/zero handles before destroying resources to prevent double-free issues
+    /// 3. It nullifies handles after destruction to mark them as cleaned up
     fn cleanup_swapchain(&mut self) {
         let device = self.vk_context.device();
         unsafe {
-            // We no longer clean up game object resources since we're preserving them
-            // for game_object in &self.game_objects {
-            //     if let Some(render_object) = &game_object.render_object {
-            //         device.destroy_buffer(render_object.vertex_buffer, None);
-            //         device.free_memory(render_object.vertex_buffer_memory, None);
-            //         device.destroy_buffer(render_object.index_buffer, None);
-            //         device.free_memory(render_object.index_buffer_memory, None);
-            //     }
-            // }
+            // We preserve game object resources during swapchain recreation
+            // to prevent flickering and maintain game state
             
+            // Clean up render resources
             self.depth_texture.destroy(device);
             self.color_texture.destroy(device);
             self.swapchain_framebuffers
@@ -1245,6 +1244,7 @@ impl VulkanApp {
                 .for_each(|f| device.destroy_framebuffer(*f, None));
             device.free_command_buffers(self.command_pool, &self.command_buffers);
             
+            // Clean up pipeline resources with null checks
             if self.pipeline.as_raw() != 0 {
                 device.destroy_pipeline(self.pipeline, None);
                 // Zero out the handle to prevent double-free
@@ -1263,6 +1263,7 @@ impl VulkanApp {
                 self.render_pass = vk::RenderPass::null();
             }
             
+            // Clean up image views with null checks
             self.swapchain_image_views
                 .iter_mut()
                 .for_each(|v| {
@@ -1272,6 +1273,7 @@ impl VulkanApp {
                     }
                 });
                 
+            // Clean up swapchain
             if self.swapchain_khr.as_raw() != 0 {
                 self.swapchain.destroy_swapchain(self.swapchain_khr, None);
                 self.swapchain_khr = vk::SwapchainKHR::null();
@@ -1299,12 +1301,12 @@ impl VulkanApp {
                     });
             }
             
-            // We don't destroy descriptor sets here - they're cleaned up when the pool is destroyed
-            // but we should reset the descriptor pool to reuse it
+            // Reset descriptor pool instead of destroying it
+            // This allows reusing the pool for new descriptor sets
             if !self.descriptor_sets.is_empty() {
                 device.reset_descriptor_pool(self.descriptor_pool, vk::DescriptorPoolResetFlags::empty())
                     .expect("Failed to reset descriptor pool!");
-                // Clear the descriptor sets list
+                // Clear the descriptor sets list to avoid stale references
                 self.descriptor_sets.clear();
             }
         }
@@ -1472,6 +1474,12 @@ impl VulkanApp {
 }
 
 impl Drop for VulkanApp {
+    /// Clean up all Vulkan resources during application shutdown.
+    /// 
+    /// This method ensures proper resource cleanup by:
+    /// 1. First cleaning up swapchain-dependent resources
+    /// 2. Using null checks to prevent double-free issues
+    /// 3. Checking if handles are valid (non-zero) before destroying them
     fn drop(&mut self) {
         log::debug!("Dropping application.");
         self.wait_gpu_idle();
@@ -1486,7 +1494,6 @@ impl Drop for VulkanApp {
             for game_object in &self.game_objects {
                 if let Some(render_object) = &game_object.render_object {
                     // Check for null/zero handle before destroying
-                    // A zero handle indicates an invalid/already destroyed resource
                     if render_object.vertex_buffer.as_raw() != 0 {
                         device.destroy_buffer(render_object.vertex_buffer, None);
                     }
@@ -1511,8 +1518,13 @@ impl Drop for VulkanApp {
         
         unsafe {
             // Clean up descriptor resources
-            device.destroy_descriptor_pool(self.descriptor_pool, None);
-            device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+            if self.descriptor_pool.as_raw() != 0 {
+                device.destroy_descriptor_pool(self.descriptor_pool, None);
+            }
+            
+            if self.descriptor_set_layout.as_raw() != 0 {
+                device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
+            }
             
             // Clean up uniform buffers with null checks
             for buffer in &self.uniform_buffers {
@@ -1531,8 +1543,13 @@ impl Drop for VulkanApp {
             self.texture.destroy(device);
             
             // Clean up command pools
-            device.destroy_command_pool(self.transient_command_pool, None);
-            device.destroy_command_pool(self.command_pool, None);
+            if self.transient_command_pool.as_raw() != 0 {
+                device.destroy_command_pool(self.transient_command_pool, None);
+            }
+            
+            if self.command_pool.as_raw() != 0 {
+                device.destroy_command_pool(self.command_pool, None);
+            }
         }
     }
 }

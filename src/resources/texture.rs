@@ -44,12 +44,19 @@ impl Texture {
     }
 
     /// Destroys all Vulkan resources associated with this texture.
+    /// 
+    /// This method uses a defensive approach to resource cleanup:
+    /// 1. It uses Option::take() for the sampler to avoid double-free
+    /// 2. It checks for null/zero handles before destroying resources
+    /// 3. It nullifies handles after destruction to mark them as cleaned up
     pub fn destroy(&mut self, device: &Device) {
         unsafe {
+            // Use take() for sampler to avoid destroying it twice
             if let Some(sampler) = self.sampler.take() {
                 device.destroy_sampler(sampler, None);
             }
             
+            // Check for valid handle before destroying
             if self.view.as_raw() != 0 {
                 device.destroy_image_view(self.view, None);
                 self.view = vk::ImageView::null();
