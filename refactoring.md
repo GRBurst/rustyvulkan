@@ -120,7 +120,7 @@ After each refactoring step:
 |------|-------------|--------|----------------|-------|
 | 1    | Extract Pipeline Logic | Completed | 2024-07-15 | Moved pipeline creation, shader loading/creation to `src/renderer/pipeline.rs` with proper documentation. Application verified working. |
 | 2    | Extract Resource Management | Completed | 2024-07-15 | Refactored texture handling code to `src/resources/texture.rs`, including image loading, texture creation, depth/color textures, and memory management. Fixed memory type lookup to match the original implementation exactly. |
-| 3    | Extract Buffer Management | Not Started | | |
+| 3    | Extract Buffer Management | Completed | 2024-07-15 | Created `src/renderer/buffer.rs` module including vertex, index, and uniform buffer management. Made buffer functions public when needed by texture module. Added proper documentation for each function. |
 | 4    | Extract Input Handling | Not Started | | |
 | 5    | Extract Window Management | Not Started | | |
 | 6    | Extract Rendering Loop | Not Started | | |
@@ -143,4 +143,10 @@ After each refactoring step:
 - **Exact Logic Duplication**: When refactoring low-level functionality like memory allocation, it's critical to exactly match the original implementation logic to avoid subtle bugs.
 - **Function Dependencies**: Understanding inter-function dependencies is essential when refactoring - we had to refactor memory management and buffer allocation together with texture handling.
 - **API Selection**: Using the right API methods is crucial - we encountered issues when using `memory_properties()` instead of `get_mem_properties()` despite them serving a similar purpose.
-- **Error Messages**: Detailed error messages helped pinpoint the exact location of issues, making debugging faster and more focused. 
+- **Error Messages**: Detailed error messages helped pinpoint the exact location of issues, making debugging faster and more focused.
+
+### Learnings from Step 3: Extract Buffer Management
+- **Module Organization**: Using a modern Rust module approach (with individual files rather than mod.rs) helps maintain a cleaner directory structure.
+- **Public vs Private APIs**: It's important to carefully consider which functions need to be public for use by other modules (like `find_memory_type`).
+- **Dependency Management**: Buffer and texture handling have shared dependencies on memory management, showing the importance of proper abstraction boundaries.
+- **Type Traits**: Adding derive attributes like `#[derive(Copy, Clone)]` for data structures is important for allowing operations like memory copying. 

@@ -5,6 +5,7 @@ use std::ptr;
 
 use crate::platform::fs;
 use crate::renderer::{SwapchainProperties, VkContext};
+use crate::renderer::buffer;
 
 /// Represents a texture in the rendering system, containing all necessary Vulkan resources.
 #[derive(Clone, Copy)]
@@ -72,7 +73,7 @@ impl Texture {
         let mip_levels = ((max(width, height) as f32).log2().floor() as u32) + 1;
         
         // Create a staging buffer to transfer the image data to the GPU
-        let (staging_buffer, staging_buffer_memory, _) = create_buffer(
+        let (staging_buffer, staging_buffer_memory, _) = buffer::create_buffer(
             vk_context,
             image_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
@@ -122,7 +123,7 @@ impl Texture {
         );
         
         // Copy the staging buffer to the image
-        copy_buffer_to_image(
+        buffer::copy_buffer_to_image(
             vk_context.device(),
             command_pool,
             copy_queue,
@@ -371,15 +372,15 @@ pub fn create_image(
         vk_context.device().get_image_memory_requirements(image)
     };
     
+    let memory_type_index = buffer::find_memory_type(
+        mem_requirements,
+        vk_context.get_mem_properties(),
+        mem_properties,
+    );
+
     let alloc_info = vk::MemoryAllocateInfo::default()
         .allocation_size(mem_requirements.size)
-        .memory_type_index(
-            find_memory_type(
-                mem_requirements,
-                vk_context.get_mem_properties(),
-                mem_properties,
-            )
-        );
+        .memory_type_index(memory_type_index);
     
     let memory = unsafe {
         vk_context
@@ -500,47 +501,6 @@ pub fn transition_image_layout(
                 &[],
                 &[],
                 &barriers,
-            );
-        }
-    });
-}
-
-/// Copies a buffer to an image.
-pub fn copy_buffer_to_image(
-    device: &Device,
-    command_pool: vk::CommandPool,
-    transition_queue: vk::Queue,
-    buffer: vk::Buffer,
-    image: vk::Image,
-    extent: vk::Extent2D,
-) {
-    execute_one_time_commands(device, command_pool, transition_queue, |command_buffer| {
-        let region = vk::BufferImageCopy::default()
-            .buffer_offset(0)
-            .buffer_row_length(0)
-            .buffer_image_height(0)
-            .image_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-            .image_extent(vk::Extent3D {
-                width: extent.width,
-                height: extent.height,
-                depth: 1,
-            });
-
-        let regions = [region];
-
-        unsafe {
-            device.cmd_copy_buffer_to_image(
-                command_buffer,
-                buffer,
-                image,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &regions,
             );
         }
     });
@@ -699,60 +659,6 @@ pub fn generate_mipmaps(
     });
 }
 
-// Buffer-related helper functions (temporarily placed here - will be moved to buffer.rs in step 3)
-
-/// Creates a buffer with the specified parameters.
-fn create_buffer(
-    vk_context: &VkContext,
-    size: vk::DeviceSize,
-    usage: vk::BufferUsageFlags,
-    mem_properties: vk::MemoryPropertyFlags,
-) -> (vk::Buffer, vk::DeviceMemory, vk::DeviceSize) {
-    // Create buffer
-    let buffer_info = vk::BufferCreateInfo::default()
-        .size(size)
-        .usage(usage)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-    let buffer = unsafe {
-        vk_context
-            .device()
-            .create_buffer(&buffer_info, None)
-            .expect("Failed to create buffer!")
-    };
-
-    // Get memory requirements
-    let mem_requirements = unsafe {
-        vk_context.device().get_buffer_memory_requirements(buffer)
-    };
-
-    // Allocate memory
-    let alloc_info = vk::MemoryAllocateInfo::default()
-        .allocation_size(mem_requirements.size)
-        .memory_type_index(find_memory_type(
-            mem_requirements,
-            vk_context.get_mem_properties(),
-            mem_properties,
-        ));
-
-    let memory = unsafe {
-        vk_context
-            .device()
-            .allocate_memory(&alloc_info, None)
-            .expect("Failed to allocate buffer memory!")
-    };
-
-    // Bind buffer to memory
-    unsafe {
-        vk_context
-            .device()
-            .bind_buffer_memory(buffer, memory, 0)
-            .expect("Failed to bind buffer memory!");
-    }
-
-    (buffer, memory, mem_requirements.size)
-}
-
 /// Executes a one-time command.
 fn execute_one_time_commands<F: FnOnce(vk::CommandBuffer)>(
     device: &Device,
@@ -805,22 +711,4 @@ fn execute_one_time_commands<F: FnOnce(vk::CommandBuffer)>(
             .expect("Failed to wait for queue idle!");
         device.free_command_buffers(command_pool, &command_buffers);
     }
-}
-
-/// Finds the memory type index for the given requirements.
-fn find_memory_type(
-    requirements: vk::MemoryRequirements,
-    mem_properties: vk::PhysicalDeviceMemoryProperties,
-    required_properties: vk::MemoryPropertyFlags,
-) -> u32 {
-    for i in 0..mem_properties.memory_type_count {
-        if requirements.memory_type_bits & (1 << i) != 0
-            && mem_properties.memory_types[i as usize]
-                .property_flags
-                .contains(required_properties)
-        {
-            return i;
-        }
-    }
-    panic!("Failed to find suitable memory type.")
 }

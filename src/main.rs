@@ -16,6 +16,7 @@ mod debug;
 use crate::{
     platform::fs as fs,
     renderer::*,
+    renderer::buffer::{self, UniformBufferObject},
     resources::*,
     scene::*,
     debug::*,
@@ -378,13 +379,13 @@ impl VulkanApp {
         // Add plane game object (with render object, no camera)
         let plane_render_object = {
             let plane_model = Model::load("models/plane.obj");
-            let (vertex_buffer, vertex_buffer_memory) = Self::create_vertex_buffer(
+            let (vertex_buffer, vertex_buffer_memory) = buffer::create_vertex_buffer(
                 &vk_context,
                 transient_command_pool,
                 graphics_queue,
                 &plane_model.vertices,
             );
-            let (index_buffer, index_buffer_memory) = Self::create_index_buffer(
+            let (index_buffer, index_buffer_memory) = buffer::create_index_buffer(
                 &vk_context,
                 transient_command_pool,
                 graphics_queue,
@@ -406,13 +407,13 @@ impl VulkanApp {
         // Add teapot game object (with render object, no camera)
         let teapot_render_object = {
             let teapot_model = Model::load("models/teapot.obj");
-            let (vertex_buffer, vertex_buffer_memory) = Self::create_vertex_buffer(
+            let (vertex_buffer, vertex_buffer_memory) = buffer::create_vertex_buffer(
                 &vk_context,
                 transient_command_pool,
                 graphics_queue,
                 &teapot_model.vertices,
             );
-            let (index_buffer, index_buffer_memory) = Self::create_index_buffer(
+            let (index_buffer, index_buffer_memory) = buffer::create_index_buffer(
                 &vk_context,
                 transient_command_pool,
                 graphics_queue,
@@ -435,7 +436,7 @@ impl VulkanApp {
 
         // Create uniform buffers and descriptor sets first
         let (uniform_buffers, uniform_buffer_memories) =
-            Self::create_uniform_buffers(&vk_context, images.len());
+            buffer::create_uniform_buffers(&vk_context, images.len());
 
         let descriptor_pool = Self::create_descriptor_pool(vk_context.device(), images.len() as _);
         let descriptor_sets = Self::create_descriptor_sets(
@@ -924,7 +925,7 @@ impl VulkanApp {
     }
 
     fn create_descriptor_set_layout(device: &Device) -> vk::DescriptorSetLayout {
-        let ubo_binding = UniformBufferObject::get_descriptor_set_layout_binding();
+        let ubo_binding = buffer::UniformBufferObject::get_descriptor_set_layout_binding();
         let sampler_binding = vk::DescriptorSetLayoutBinding::default()
             .binding(1)
             .descriptor_count(1)
@@ -984,7 +985,7 @@ impl VulkanApp {
                 let buffer_info = vk::DescriptorBufferInfo::default()
                     .buffer(*buffer)
                     .offset(0)
-                    .range(size_of::<UniformBufferObject>() as vk::DeviceSize);
+                    .range(size_of::<buffer::UniformBufferObject>() as vk::DeviceSize);
                 let buffer_infos = [buffer_info];
 
                 let image_info = vk::DescriptorImageInfo::default()
@@ -1051,166 +1052,6 @@ impl VulkanApp {
                 .create_command_pool(&command_pool_info, None)
                 .unwrap()
         }
-    }
-
-    fn create_uniform_buffers(
-        vk_context: &VkContext,
-        count: usize,
-    ) -> (Vec<vk::Buffer>, Vec<vk::DeviceMemory>) {
-        let size = size_of::<UniformBufferObject>() as vk::DeviceSize;
-        let mut buffers = Vec::new();
-        let mut memories = Vec::new();
-
-        for _ in 0..count {
-            let (buffer, memory, _) = Self::create_buffer(
-                vk_context,
-                size,
-                vk::BufferUsageFlags::UNIFORM_BUFFER,
-                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            );
-            buffers.push(buffer);
-            memories.push(memory);
-        }
-
-        (buffers, memories)
-    }
-
-    /// Create a buffer and allocate its memory.
-    ///
-    /// # Returns
-    ///
-    /// The buffer, its memory and the actual size in bytes of the
-    /// allocated memory since in may differ from the requested size.
-    fn create_buffer(
-        vk_context: &VkContext,
-        size: vk::DeviceSize,
-        usage: vk::BufferUsageFlags,
-        mem_properties: vk::MemoryPropertyFlags,
-    ) -> (vk::Buffer, vk::DeviceMemory, vk::DeviceSize) {
-        let device = vk_context.device();
-        let buffer = {
-            let buffer_info = vk::BufferCreateInfo::default()
-                .size(size)
-                .usage(usage)
-                .sharing_mode(vk::SharingMode::EXCLUSIVE);
-            unsafe { device.create_buffer(&buffer_info, None).unwrap() }
-        };
-
-        let mem_requirements = unsafe { device.get_buffer_memory_requirements(buffer) };
-        let memory = {
-            let mem_type = Self::find_memory_type(
-                mem_requirements,
-                vk_context.get_mem_properties(),
-                mem_properties,
-            );
-
-            let alloc_info = vk::MemoryAllocateInfo::default()
-                .allocation_size(mem_requirements.size)
-                .memory_type_index(mem_type);
-            unsafe { device.allocate_memory(&alloc_info, None).unwrap() }
-        };
-
-        unsafe { device.bind_buffer_memory(buffer, memory, 0).unwrap() };
-
-        (buffer, memory, mem_requirements.size)
-    }
-
-    /// Copy the `size` first bytes of `src` into `dst`.
-    ///
-    /// It's done using a command buffer allocated from
-    /// `command_pool`. The command buffer is cubmitted tp
-    /// `transfer_queue`.
-    fn copy_buffer(
-        device: &Device,
-        command_pool: vk::CommandPool,
-        transfer_queue: vk::Queue,
-        src: vk::Buffer,
-        dst: vk::Buffer,
-        size: vk::DeviceSize,
-    ) {
-        Self::execute_one_time_commands(device, command_pool, transfer_queue, |buffer| {
-            let region = vk::BufferCopy {
-                src_offset: 0,
-                dst_offset: 0,
-                size,
-            };
-            let regions = [region];
-
-            unsafe { device.cmd_copy_buffer(buffer, src, dst, &regions) };
-        });
-    }
-
-    /// Create a one time use command buffer and pass it to `executor`.
-    fn execute_one_time_commands<F: FnOnce(vk::CommandBuffer)>(
-        device: &Device,
-        command_pool: vk::CommandPool,
-        queue: vk::Queue,
-        executor: F,
-    ) {
-        let command_buffer = {
-            let alloc_info = vk::CommandBufferAllocateInfo::default()
-                .level(vk::CommandBufferLevel::PRIMARY)
-                .command_pool(command_pool)
-                .command_buffer_count(1);
-
-            unsafe { device.allocate_command_buffers(&alloc_info).unwrap()[0] }
-        };
-        let command_buffers = [command_buffer];
-
-        // Begin recording
-        {
-            let begin_info = vk::CommandBufferBeginInfo::default()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            unsafe {
-                device
-                    .begin_command_buffer(command_buffer, &begin_info)
-                    .unwrap()
-            };
-        }
-
-        // Execute user function
-        executor(command_buffer);
-
-        // End recording
-        unsafe { device.end_command_buffer(command_buffer).unwrap() };
-
-        // Submit and wait
-        {
-            let submit_info = vk::SubmitInfo::default().command_buffers(&command_buffers);
-            let submit_infos = [submit_info];
-            unsafe {
-                device
-                    .queue_submit(queue, &submit_infos, vk::Fence::null())
-                    .unwrap();
-                device.queue_wait_idle(queue).unwrap();
-            };
-        }
-
-        // Free
-        unsafe { device.free_command_buffers(command_pool, &command_buffers) };
-    }
-
-    /// Find a memory type in `mem_properties` that is suitable
-    /// for `requirements` and supports `required_properties`.
-    ///
-    /// # Returns
-    ///
-    /// The index of the memory type from `mem_properties`.
-    fn find_memory_type(
-        requirements: vk::MemoryRequirements,
-        mem_properties: vk::PhysicalDeviceMemoryProperties,
-        required_properties: vk::MemoryPropertyFlags,
-    ) -> u32 {
-        for i in 0..mem_properties.memory_type_count {
-            if requirements.memory_type_bits & (1 << i) != 0
-                && mem_properties.memory_types[i as usize]
-                    .property_flags
-                    .contains(required_properties)
-            {
-                return i;
-            }
-        }
-        panic!("Failed to find suitable memory type.")
     }
 
     fn create_and_register_command_buffers(
@@ -1629,7 +1470,7 @@ impl VulkanApp {
             / self.swapchain_properties.extent.height as f32;
         if let Some(player) = self.game_objects.get_mut(0) {
             if let Some(camera) = player.camera.as_mut() {
-                let ubo = UniformBufferObject {
+                let ubo = buffer::UniformBufferObject {
                     model: Matrix4::from_angle_x(Deg(0.0)),
                     view: camera.look_to(camera.get_view_direction()),
                     proj: camera.get_projection_matrix(aspect),
@@ -1637,7 +1478,7 @@ impl VulkanApp {
                 let ubos = [ubo];
 
                 let buffer_mem = self.uniform_buffer_memories[current_image as usize];
-                let size = size_of::<UniformBufferObject>() as vk::DeviceSize;
+                let size = size_of::<buffer::UniformBufferObject>() as vk::DeviceSize;
                 unsafe {
                     let device = self.vk_context.device();
                     let data_ptr = device
@@ -1654,93 +1495,6 @@ impl VulkanApp {
             teapot.transform.move_by(0.0, 10092.0, 0.0);
 
         }
-    }
-
-    // These functions will be removed in Step 3, but we need to keep them for now
-    
-    fn create_vertex_buffer(
-        vk_context: &VkContext,
-        command_pool: vk::CommandPool,
-        transfer_queue: vk::Queue,
-        vertices: &[gameobject::Vertex],
-    ) -> (vk::Buffer, vk::DeviceMemory) {
-        Self::create_device_local_buffer_with_data::<u32, _>(
-            vk_context,
-            command_pool,
-            transfer_queue,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            vertices,
-        )
-    }
-
-    fn create_index_buffer(
-        vk_context: &VkContext,
-        command_pool: vk::CommandPool,
-        transfer_queue: vk::Queue,
-        indices: &[u32],
-    ) -> (vk::Buffer, vk::DeviceMemory) {
-        Self::create_device_local_buffer_with_data::<u16, _>(
-            vk_context,
-            command_pool,
-            transfer_queue,
-            vk::BufferUsageFlags::INDEX_BUFFER,
-            indices,
-        )
-    }
-
-    /// Create a buffer and it's gpu  memory and fill it.
-    ///
-    /// This function internally creates an host visible staging buffer and
-    /// a device local buffer. The data is first copied from the cpu to the
-    /// staging buffer. Then we copy the data from the staging buffer to the
-    /// final buffer using a one-time command buffer.
-    fn create_device_local_buffer_with_data<A, T: Copy>(
-        vk_context: &VkContext,
-        command_pool: vk::CommandPool,
-        transfer_queue: vk::Queue,
-        usage: vk::BufferUsageFlags,
-        data: &[T],
-    ) -> (vk::Buffer, vk::DeviceMemory) {
-        let device = vk_context.device();
-        let size = size_of_val(data) as vk::DeviceSize;
-        let (staging_buffer, staging_memory, staging_mem_size) = Self::create_buffer(
-            vk_context,
-            size,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        );
-
-        unsafe {
-            let data_ptr = device
-                .map_memory(staging_memory, 0, size, vk::MemoryMapFlags::empty())
-                .unwrap();
-            let mut align = ash::util::Align::new(data_ptr, align_of::<A>() as _, staging_mem_size);
-            align.copy_from_slice(data);
-            device.unmap_memory(staging_memory);
-        };
-
-        let (buffer, memory, _) = Self::create_buffer(
-            vk_context,
-            size,
-            vk::BufferUsageFlags::TRANSFER_DST | usage,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        );
-
-        Self::copy_buffer(
-            device,
-            command_pool,
-            transfer_queue,
-            staging_buffer,
-            buffer,
-            size,
-        );
-
-        unsafe {
-            device.destroy_buffer(staging_buffer, None);
-            device.free_memory(staging_memory, None);
-        };
-
-        (buffer, memory)
     }
 }
 
@@ -1827,25 +1581,5 @@ impl Iterator for InFlightFrames {
         self.current_frame = (self.current_frame + 1) % self.sync_objects.len();
 
         Some(next)
-    }
-}
-
-#[derive(Clone, Copy)]
-#[allow(dead_code)]
-#[repr(C)]
-struct UniformBufferObject {
-    model: Matrix4<f32>,
-    view: Matrix4<f32>,
-    proj: Matrix4<f32>,
-}
-
-impl UniformBufferObject {
-    fn get_descriptor_set_layout_binding<'a>() -> vk::DescriptorSetLayoutBinding<'a> {
-        vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
-        // .immutable_samplers() null since we're not creating a sampler descriptor
     }
 }
