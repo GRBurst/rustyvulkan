@@ -1337,7 +1337,7 @@ impl VulkanApp {
             // Get mouse movement
             if let Some(delta) = self.input_system.take_mouse_delta() {
                 let sensitivity = 0.1;
-                rotation = Some((-delta.y * sensitivity, -delta.x * sensitivity));
+                rotation = Some((delta.x * sensitivity, -delta.y * sensitivity));
             }
             
             // Handle mouse wheel for zoom
@@ -1359,14 +1359,14 @@ impl VulkanApp {
                 
                 // Apply up/down movement (from mouse wheel)
                 if up_movement != 0.0 {
-                    camera.move_camera(Vector3::new(0.0, 0.0, up_movement));
+                    camera.move_camera(Vector3::new(0.0, up_movement, 0.0));
                 }
                 
                 // Handle backward movement directly on camera
-                if forward_movement < 0.0 {
+                if forward_movement != 0.0 {
                     camera.move_camera(camera.get_view_direction() * forward_movement);
                 }
-                
+    
                 // Set up UBO for rendering
                 let ubo = buffer::UniformBufferObject {
                     model: Matrix4::from_angle_x(Deg(0.0)),
@@ -1390,12 +1390,7 @@ impl VulkanApp {
                     align.copy_from_slice(&ubos);
                     device.unmap_memory(buffer_mem);
                 }
-            }
-            
-            // Handle forward movement on the player (after camera operations are complete)
-            if forward_movement > 0.0 {
-                player.move_forward(forward_movement);
-            }
+            }       
         }
     }
 
