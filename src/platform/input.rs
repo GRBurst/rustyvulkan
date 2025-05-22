@@ -3,24 +3,25 @@ use std::collections::HashMap;
 use cgmath::{Vector2, Vector3};
 use winit::{
     dpi::PhysicalPosition,
-    event::{ElementState, KeyEvent, MouseScrollDelta, WindowEvent},
+    event::{
+        ElementState, WindowEvent, KeyEvent, MouseScrollDelta, 
+        MouseButton
+    },
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
 
-/// Manages input state and provides access to input events
-///
-/// This struct keeps track of keyboard, mouse and other input events,
-/// providing a clean abstraction for game logic to respond to user input.
-/// It handles cursor capturing, mouse movement tracking, and keyboard state.
-#[derive(Default)]
+/// Manages input from keyboard and mouse
+/// 
+/// Provides a clean interface for querying input state, handling events,
+/// and tracking input changes between frames.
+#[derive(Clone)]
 pub struct InputSystem {
     state: InputState,
     last_cursor_position: Option<(f64, f64)>,
 }
 
-/// Represents the current state of all inputs
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct InputState {
     is_cursor_captured: bool,
     mouse_delta: Option<[i32; 2]>,

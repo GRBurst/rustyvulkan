@@ -123,7 +123,7 @@ After each refactoring step:
 | 3    | Extract Buffer Management | Completed | 2024-07-15 | Created `src/renderer/buffer.rs` module including vertex, index, and uniform buffer management. Made buffer functions public when needed by texture module. Added proper documentation for each function. |
 | 4    | Extract Input Handling | Completed | 2024-07-15 | Implemented `src/platform/input.rs` with a dedicated InputSystem class for keyboard, mouse, and cursor handling. Updated main.rs to use the new system. Verified input functionality works correctly for camera and movement. |
 | 5    | Extract Window Management | Completed | 2024-07-15 | Implemented `src/platform/window.rs` with a dedicated WindowSystem class. Also implemented resource manager to fix flickering issues during swapchain recreation, ensuring proper texture reuse and descriptor set recreation. Improved resource lifecycle management during window resize events. |
-| 6    | Extract Rendering Loop | Not Started | | |
+| 6    | Extract Rendering Loop | In Progress | | Created `src/renderer/render_loop.rs` with a dedicated RenderLoop class for frame rendering, synchronization, and swapchain management. Implemented core functionality like draw_frame, update_uniform_buffers, and create_swapchain methods, following original code closely. Fixed compilation errors and ensured proper queue family handling. Next steps: implement remaining helper methods and update main.rs to use the new system. |
 | 7    | Complete GameObject Systems | Not Started | | |
 | 8    | Implement Game State | Not Started | | |
 | 9    | Create Engine Core | Not Started | | |
@@ -177,4 +177,16 @@ After each refactoring step:
 - **Mutable Iteration**: Using `iter_mut()` instead of `iter()` when cleaning up resources allows setting handles to null after destruction, improving safety.
 - **Explicit Descriptor Management**: Clear descriptor set lists after resetting the descriptor pool to prevent stale references.
 - **Validation Layer Messages**: Carefully analyze validation layer messages - they often point to deeper architectural issues in resource management rather than simple bugs.
-- **Texture Resource Management**: Special care is needed for textures that contain multiple Vulkan objects (image, memory, view, sampler). Each must be properly nullified after destruction. 
+- **Texture Resource Management**: Special care is needed for textures that contain multiple Vulkan objects (image, memory, view, sampler). Each must be properly nullified after destruction.
+
+### Learnings from Step 6: Extract Rendering Loop
+- **Modular Design**: Separating the rendering loop logic into its own module clarifies responsibilities and improves maintainability.
+- **Resource Lifecycle Management**: The refactoring process highlighted the need for careful management of resource lifecycles, particularly around swapchain recreation.
+- **Synchronization Complexity**: Vulkan's synchronization mechanisms (semaphores, fences) require careful handling to ensure correct frame pacing and resource access.
+- **API Abstraction**: Creating higher-level abstractions around the Vulkan API makes the code more readable and easier to maintain.
+- **Resource Dependencies**: The rendering loop has complex dependencies on various resources (swapchain, pipelines, command buffers) that need to be managed carefully.
+- **Forward References**: To maintain the existing architecture, many method stubs were created to be filled in later, showing how step-by-step refactoring works in a large codebase.
+- **Architecture Planning**: Refactoring the rendering loop required planning for how different components will interact, showing the importance of architecture design in refactoring.
+- **Shared Resources**: Using direct references instead of Arc improves ownership semantics and reflects the original code's structure.
+- **Code Duplication**: In this refactoring phase, we focused on correctly duplicating the original logic rather than optimizing or restructuring it, ensuring compatibility with existing code.
+- **Exact Logic Duplication**: When refactoring critical functions like swapchain creation, we needed to exactly match the original code to avoid subtle errors. 

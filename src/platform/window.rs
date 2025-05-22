@@ -12,11 +12,16 @@ use ash::{
     Entry, Instance,
     khr::surface,
 };
+use std::sync::Arc;
 
 /// Configuration options for creating a window
+#[derive(Clone, Debug)]
 pub struct WindowConfig {
+    /// Title of the window
     pub title: String,
+    /// Width of the window in pixels
     pub width: u32,
+    /// Height of the window in pixels
     pub height: u32,
     pub resizable: bool,
 }
@@ -24,39 +29,52 @@ pub struct WindowConfig {
 impl Default for WindowConfig {
     fn default() -> Self {
         Self {
-            title: "Vulkan Application".to_string(),
-            width: 800,
-            height: 600,
+            title: "Rusty Vulkan".to_string(),
+            width: 1280,
+            height: 720,
             resizable: true,
         }
     }
 }
 
 /// Manages window creation and lifecycle
+/// 
+/// Provides a clean interface for creating and manipulating the application window,
+/// handling window events, and accessing window properties.
 pub struct WindowSystem {
-    window: Window,
+    window: Arc<Window>,
+    config: WindowConfig,
     resize_dimensions: Option<[u32; 2]>,
 }
 
+impl Clone for WindowSystem {
+    fn clone(&self) -> Self {
+        Self {
+            window: Arc::clone(&self.window),
+            config: self.config.clone(),
+            resize_dimensions: self.resize_dimensions.clone(),
+        }
+    }
+}
+
 impl WindowSystem {
-    /// Creates a new window with the provided configuration and event loop
+    /// Creates a new window system with the given configuration
     pub fn new(config: WindowConfig, event_loop: &EventLoop<()>) -> Self {
-        // Create the window
         let window = WindowBuilder::new()
-            .with_title(config.title)
+            .with_title(&config.title)
             .with_inner_size(PhysicalSize::new(config.width, config.height))
             .with_resizable(config.resizable)
             .build(event_loop)
             .expect("Failed to create window");
-            
-        // Create the window system
+
         Self {
-            window,
+            window: Arc::new(window),
+            config,
             resize_dimensions: None,
         }
     }
     
-    /// Returns a reference to the window
+    /// Returns a reference to the underlying window
     pub fn window(&self) -> &Window {
         &self.window
     }
@@ -99,5 +117,11 @@ impl WindowSystem {
     /// Returns the title of the window
     pub fn title(&self) -> String {
         self.window.title().to_string()
+    }
+
+    /// Returns the window's dimensions
+    pub fn dimensions(&self) -> (u32, u32) {
+        let size = self.window.inner_size();
+        (size.width, size.height)
     }
 }

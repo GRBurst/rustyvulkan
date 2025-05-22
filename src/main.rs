@@ -18,6 +18,7 @@ use crate::{
     platform::window::{WindowSystem, WindowConfig},
     renderer::*,
     renderer::buffer,
+    renderer::render_loop::RenderLoop,
     resources::*,
     scene::*,
     scene::camera::Camera,
@@ -35,7 +36,11 @@ use ash::vk::Handle;
 
 use std::{
     ffi::{CStr, CString},
-    mem::{align_of, size_of},
+    io::Cursor,
+    mem::{size_of, align_of},
+    path::Path,
+    ptr,
+    sync::Arc,
 };
 
 use cgmath::{Deg, Matrix4, Vector3};
@@ -60,7 +65,7 @@ fn main() {
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     
     // Create window system
-    let mut window_system = WindowSystem::new(
+    let window_system = WindowSystem::new(
         WindowConfig {
             title: "Vulkan tutorial with Ash".to_string(),
             width: WIDTH,
@@ -71,6 +76,10 @@ fn main() {
     );
     
     let mut app = VulkanApp::new(window_system);
+    
+    // Initialize the render loop
+    app.init_render_loop();
+    
     let mut dirty_swapchain = false;
 
     // Run the event loop
@@ -118,10 +127,16 @@ struct VulkanApp {
     // New input system
     input_system: InputSystem,
 
+    // Vulkan context and core resources
     vk_context: VkContext,
     queue_families_indices: QueueFamiliesIndices,
     graphics_queue: vk::Queue,
     present_queue: vk::Queue,
+    
+    // New render loop for handling rendering
+    render_loop: Option<RenderLoop>,
+    
+    // Legacy fields - will eventually be moved to RenderLoop
     swapchain: swapchain::Device,
     swapchain_khr: vk::SwapchainKHR,
     swapchain_properties: SwapchainProperties,
@@ -135,10 +150,10 @@ struct VulkanApp {
     command_pool: vk::CommandPool,
     transient_command_pool: vk::CommandPool,
     msaa_samples: vk::SampleCountFlags,
-    color_texture: Texture,
+    color_texture: texture::Texture,
     depth_format: vk::Format,
-    depth_texture: Texture,
-    texture: Texture,
+    depth_texture: texture::Texture,
+    texture: texture::Texture,
     render_objects: Vec<RenderObject>,
     game_objects: Vec<GameObject>,
     uniform_buffers: Vec<vk::Buffer>,
@@ -286,6 +301,7 @@ impl VulkanApp {
             queue_families_indices,
             graphics_queue,
             present_queue,
+            render_loop: None,
             swapchain,
             swapchain_khr,
             swapchain_properties: properties,
@@ -1018,11 +1034,23 @@ impl VulkanApp {
     }
 
     pub fn wait_gpu_idle(&self) {
-        unsafe { self.vk_context.device().device_wait_idle().unwrap() };
+        // If the render loop is initialized, use it, otherwise fall back to legacy code
+        if let Some(render_loop) = &self.render_loop {
+            render_loop.wait_gpu_idle();
+        } else {
+            unsafe { self.vk_context.device().device_wait_idle().unwrap() };
+        }
     }
 
     pub fn draw_frame(&mut self) -> bool {
-        log::trace!("Drawing frame.");
+        // If render_loop is available, use it
+        if let Some(render_loop) = &mut self.render_loop {
+            return render_loop.draw_frame();
+        }
+        
+        // Otherwise, use the legacy implementation
+        // This will be removed once render_loop is fully implemented
+        
         let sync_objects = self.in_flight_frames.next().unwrap();
         let image_available_semaphore = sync_objects.image_available_semaphore;
         let render_finished_semaphore = sync_objects.render_finished_semaphore;
@@ -1044,6 +1072,7 @@ impl VulkanApp {
                 vk::Fence::null(),
             )
         };
+        
         let image_index = match result {
             Ok((image_index, _)) => image_index,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
@@ -1051,7 +1080,7 @@ impl VulkanApp {
             }
             Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
         };
-
+        
         unsafe { self.vk_context.device().reset_fences(&wait_fences).unwrap() };
 
         self.update_uniform_buffers(image_index);
@@ -1059,7 +1088,7 @@ impl VulkanApp {
         let device = self.vk_context.device();
         let wait_semaphores = [image_available_semaphore];
         let signal_semaphores = [render_finished_semaphore];
-
+        
         // Submit command buffer
         {
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -1076,10 +1105,10 @@ impl VulkanApp {
                     .unwrap()
             };
         }
-
+        
         let swapchains = [self.swapchain_khr];
         let images_indices = [image_index];
-
+        
         {
             let present_info = vk::PresentInfoKHR::default()
                 .wait_semaphores(&signal_semaphores)
@@ -1111,7 +1140,15 @@ impl VulkanApp {
     /// the window is maximized. This is because a width or height of 0
     /// is not legal.
     pub fn recreate_swapchain(&mut self) {
-        log::debug!("Recreating swapchain.");
+        // If render_loop is available, use it
+        if let Some(render_loop) = &mut self.render_loop {
+            render_loop.recreate_swapchain();
+            return;
+        }
+        
+        // Otherwise, use the legacy implementation
+        // This will be removed once render_loop is fully implemented
+        
         self.wait_gpu_idle();
         self.cleanup_swapchain();
 
@@ -1124,11 +1161,8 @@ impl VulkanApp {
             self.queue_families_indices,
             dimensions,
         );
-        let swapchain_image_views = Self::create_swapchain_image_views(
-            self.vk_context.device(),
-            &images,
-            properties,
-        );
+        let swapchain_image_views =
+            Self::create_swapchain_image_views(self.vk_context.device(), &images, properties);
 
         let render_pass = Self::create_render_pass(
             self.vk_context.device(),
@@ -1151,7 +1185,6 @@ impl VulkanApp {
             properties,
             self.msaa_samples,
         );
-
         let depth_texture = texture::create_depth_texture(
             &self.vk_context,
             self.command_pool,
@@ -1163,7 +1196,6 @@ impl VulkanApp {
 
         // We'll reuse the existing texture instead of reloading it from disk
         // This prevents flickering by avoiding the texture reload process
-        // In a more comprehensive resource manager, this would be handled more elegantly
         
         // Create new uniform buffers sized appropriately for the new swapchain
         let (uniform_buffers, uniform_buffer_memories) =
@@ -1470,6 +1502,22 @@ impl VulkanApp {
         game_objects.push(teapot_go);
         
         game_objects
+    }
+
+    // Initialize the render loop to handle rendering
+    pub fn init_render_loop(&mut self) {
+        if self.render_loop.is_none() {
+            self.render_loop = Some(RenderLoop::new(
+                Arc::new(self.vk_context.clone()),
+                (self.queue_families_indices.graphics_index, self.queue_families_indices.present_index),
+                self.graphics_queue,
+                self.present_queue,
+                self.command_pool,
+                self.msaa_samples,
+                self.window_system.clone(),
+                self.input_system.clone(),
+            ));
+        }
     }
 }
 
