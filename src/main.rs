@@ -51,7 +51,7 @@ use winit::{
 // Constants moved to the top of the file for better organization
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 600;
-const MAX_FRAMES_IN_FLIGHT: u32 = 2;
+const MAX_FRAMES_IN_FLIGHT: u32 = 4;
 
 fn main() {
     env_logger::init();
