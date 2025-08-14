@@ -138,7 +138,7 @@ struct VulkanApp {
     color_texture: Texture,
     depth_format: vk::Format,
     depth_texture: Texture,
-    texture: Texture,
+    object_textures: Vec<Texture>,
     render_objects: Vec<RenderObject>,
     game_objects: Vec<GameObject>,
     uniform_buffers: Vec<vk::Buffer>,
@@ -232,11 +232,17 @@ impl VulkanApp {
             msaa_samples,
         );
 
-        let texture = texture::Texture::load_from_file(
+        let plane_texture = texture::Texture::load_from_file(
             &vk_context,
             command_pool,
             graphics_queue,
             "images/chalet.jpg",
+        );
+        let teapot_texture = texture::Texture::load_from_file(
+            &vk_context,
+            command_pool,
+            graphics_queue,
+            "images/statue.jpg",
         );
 
         let game_objects = Self::create_game_objects(&vk_context, command_pool, graphics_queue);
@@ -260,7 +266,8 @@ impl VulkanApp {
             descriptor_pool,
             descriptor_set_layout,
             &uniform_buffers,
-            texture,
+            plane_texture,
+            teapot_texture,
         );
 
         // Create command buffers
@@ -302,7 +309,7 @@ impl VulkanApp {
             color_texture,
             depth_format,
             depth_texture,
-            texture,
+            object_textures: vec![plane_texture, teapot_texture],
             render_objects: Vec::new(),
             game_objects,
             uniform_buffers,
@@ -738,12 +745,17 @@ impl VulkanApp {
 
     fn create_descriptor_set_layout(device: &Device) -> vk::DescriptorSetLayout {
         let ubo_binding = buffer::UniformBufferObject::get_descriptor_set_layout_binding();
-        let sampler_binding = vk::DescriptorSetLayoutBinding::default()
+        let plane_binding = vk::DescriptorSetLayoutBinding::default()
             .binding(1)
             .descriptor_count(1)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-        let bindings = [ubo_binding, sampler_binding];
+        let teapot_binding = vk::DescriptorSetLayoutBinding::default()
+            .binding(2)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT);
+        let bindings = [ubo_binding, plane_binding, teapot_binding];
 
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
 
@@ -780,7 +792,8 @@ impl VulkanApp {
         pool: vk::DescriptorPool,
         layout: vk::DescriptorSetLayout,
         uniform_buffers: &[vk::Buffer],
-        texture: Texture,
+        plane_texture: Texture,
+        teapot_texture: Texture,
     ) -> Vec<vk::DescriptorSet> {
         let layouts = (0..uniform_buffers.len())
             .map(|_| layout)
@@ -800,11 +813,17 @@ impl VulkanApp {
                     .range(size_of::<buffer::UniformBufferObject>() as vk::DeviceSize);
                 let buffer_infos = [buffer_info];
 
-                let image_info = vk::DescriptorImageInfo::default()
+                let plane_image_info = vk::DescriptorImageInfo::default()
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(texture.view)
-                    .sampler(texture.sampler.unwrap());
-                let image_infos = [image_info];
+                    .image_view(plane_texture.view)
+                    .sampler(plane_texture.sampler.unwrap());
+                let plane_image_infos = [plane_image_info];
+
+                let teapot_image_info = vk::DescriptorImageInfo::default()
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_view(teapot_texture.view)
+                    .sampler(teapot_texture.sampler.unwrap());
+                let teapot_image_infos = [teapot_image_info];
 
                 let ubo_descriptor_write = vk::WriteDescriptorSet::default()
                     .dst_set(*set)
@@ -812,14 +831,22 @@ impl VulkanApp {
                     .dst_array_element(0)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                     .buffer_info(&buffer_infos);
-                let sampler_descriptor_write = vk::WriteDescriptorSet::default()
+
+                let plane_writer = vk::WriteDescriptorSet::default()
                     .dst_set(*set)
                     .dst_binding(1)
                     .dst_array_element(0)
                     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(&image_infos);
+                    .image_info(&plane_image_infos);
 
-                let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
+                let teapot_writer = vk::WriteDescriptorSet::default()
+                    .dst_set(*set)
+                    .dst_binding(2)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .image_info(&teapot_image_infos);
+
+                let descriptor_writes = [ubo_descriptor_write, plane_writer, teapot_writer];
 
                 unsafe { device.update_descriptor_sets(&descriptor_writes, &[]) }
             });
@@ -1176,7 +1203,8 @@ impl VulkanApp {
             self.descriptor_pool,
             self.descriptor_set_layout,
             &uniform_buffers,
-            self.texture, // Reuse existing texture
+            self.object_textures[0], // Reuse existing texture
+            self.object_textures[1], // Reuse existing texture
         );
 
         let swapchain_framebuffers = Self::create_framebuffers(
@@ -1535,7 +1563,7 @@ impl Drop for VulkanApp {
             }
                 
             // Clean up texture resources
-            self.texture.destroy(device);
+            self.object_textures.iter_mut().map(|texture| texture.destroy(device));
             
             // Clean up command pools
             if self.transient_command_pool.as_raw() != 0 {

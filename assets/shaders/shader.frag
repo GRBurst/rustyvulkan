@@ -12,9 +12,9 @@ layout(binding = 1) uniform sampler2D texSampler;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    // outColor = texture(texSampler, fragCoords)*vec4(fragColor, 1.0);
-    // vec3 lightDir = normalize(vec3(fragPos) - vec3(vLightPos));
-    vec3 lightDir = normalize(vec3(vLightPos) - vec3(fragPos));
-    float spec = dot(lightDir, fragNormals);
-    outColor = vec4(fragNormals * spec, 1.0);
+    outColor = texture(texSampler, fragCoords)*vec4(fragColor, 1.0);
+    vec3 lightDir = normalize(vec3(fragPos) - vec3(vLightPos));
+    // vec3 lightDir = normalize(vec3(vLightPos) - vec3(fragPos));
+    // float spec = dot(lightDir, fragNormals);
+    // outColor = vec4(fragNormals * spec, 1.0);
 }
