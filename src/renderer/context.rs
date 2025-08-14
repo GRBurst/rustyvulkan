@@ -10,7 +10,7 @@ pub struct VkContext {
     entry: Entry,
     instance: Instance,
     debug_utils: debug_utils::Instance,
-    debug_callback: vk::DebugUtilsMessengerEXT,
+    debug_callback: Option<vk::DebugUtilsMessengerEXT>,
     surface: surface::Instance,
     surface_khr: SurfaceKHR,
     physical_device: vk::PhysicalDevice,
@@ -97,7 +97,7 @@ impl VkContext {
         entry: Entry,
         instance: Instance,
         debug_utils: debug_utils::Instance,
-        debug_callback: vk::DebugUtilsMessengerEXT,
+        debug_callback: Option<vk::DebugUtilsMessengerEXT>,
         surface: surface::Instance,
         surface_khr: vk::SurfaceKHR,
         physical_device: vk::PhysicalDevice,
@@ -121,7 +121,7 @@ impl Drop for VkContext {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_device(None);
-            self.debug_utils.destroy_debug_utils_messenger(self.debug_callback, None);
+            self.debug_callback.map(|callback| self.debug_utils.destroy_debug_utils_messenger(callback, None));
             self.surface.destroy_surface(self.surface_khr, None);
             self.instance.destroy_instance(None);
         }

@@ -177,7 +177,7 @@ impl VulkanApp {
             entry,
             instance,
             debug_utils,
-            debug_report_callback.unwrap().1,
+            debug_report_callback.map(|callback| callback.1),
             surface,
             surface_khr,
             physical_device,
