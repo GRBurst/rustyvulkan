@@ -1,5 +1,5 @@
 {
-  description = "Streaming with React and Python";
+  description = "Rustyvulkan";
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";

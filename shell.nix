@@ -1,5 +1,6 @@
 {
   pkgs,
+  withIDE ? (builtins.getEnv "WITH_IDE" == "1" || builtins.getEnv "WITH_IDE" == "true"),
 }: let
   pname = "rustyvulkan";
 
@@ -7,6 +8,73 @@
   customVulkanValidationLayers = pkgs.vulkan-validation-layers.override {
     stdenv = pkgs.gcc13Stdenv;
   };
+  vsextensions =
+    (with pkgs.vscode-extensions; [
+      redhat.vscode-yaml
+      vscodevim.vim
+      github.copilot
+
+      mikestead.dotenv
+      naumovs.color-highlight
+      oderwat.indent-rainbow
+      streetsidesoftware.code-spell-checker
+      vincaslt.highlight-matching-tag
+      vscode-icons-team.vscode-icons
+
+      timonwong.shellcheck
+      foxundermoon.shell-format
+      kamadorueda.alejandra # Nix code formatter
+      jnoortheen.nix-ide
+
+      rust-lang.rust-analyzer
+
+      continue.continue # Local LLMs
+    ])
+    ++ pkgs.vscode-utils.extensionsFromVscodeMarketplace [
+      {
+        publisher = "kisstkondoros";
+        name = "vscode-codemetrics";
+        version = "1.26.1";
+        sha256 = "sha256-lw6eZwlMXEjaT+FhhmiLkCB49Q7C015vU7zOLLTtGf8=";
+      }
+      {
+        publisher = "ryanluker";
+        name = "vscode-coverage-gutters";
+        version = "2.13.0";
+        sha256 = "sha256-qgPKGikqNIeZkKfd0P0keAdxRl9XNzvEJKQy58eaUZk=";
+      }
+      {
+        publisher = "yzhang";
+        name = "markdown-all-in-one";
+        version = "3.6.3";
+        sha256 = "sha256-xJhbFQSX1DDDp8iE/R8ep+1t5IRusBkvjHcNmvjrboM=";
+      }
+      {
+        publisher = "dustypomerleau";
+        name = "rust-syntax";
+        version = "0.6.1";
+        sha256 = "sha256-o9iXPhwkimxoJc1dLdaJ8nByLIaJSpGX/nKELC26jGU=";
+      }
+    ];
+  rustyvulkanVsCodeWithExtensions = pkgs.vscode-with-extensions.override {
+    vscodeExtensions = vsextensions;
+  };
+  vscodeWrapperContent = builtins.readFile "${rustyvulkanVsCodeWithExtensions}/bin/code";
+  vscodeExtensionsDir = builtins.match ".*--extensions-dir ([^ ]+).*" vscodeWrapperContent;
+  rustyvulkanCursorArgs = [
+    "--extensions-dir ${builtins.elemAt vscodeExtensionsDir 0}"
+    "--disable-extension Continue.continue"
+    "--disable-extension kilocode.Kilo-Code"
+  ];
+  rustyvulkanCursorWithExtensions = pkgs.code-cursor.override {
+    commandLineArgs = builtins.concatStringsSep " " rustyvulkanCursorArgs;
+  };
+  rustyvulkanVsCode = pkgs.writeShellScriptBin "rustyvulkan-vscode" ''
+    ${rustyvulkanVsCodeWithExtensions}/bin/code --password-store="gnome-libsecret" "$@"
+  '';
+  rustyvulkanCursor = pkgs.writeShellScriptBin "rustyvulkan-cursor" ''
+    ${rustyvulkanCursorWithExtensions}/bin/cursor --password-store="gnome-libsecret" "$@"
+  '';
 in
 pkgs.mkShell {
   # Build-time dependencies (tools needed during compilation)
@@ -29,16 +97,22 @@ pkgs.mkShell {
     xorg.libXcursor
     xorg.libXrandr
     xorg.libXi
-    
+
     libxkbcommon
   ];
 
   # Development tools available in shell
-  packages = with pkgs; [
-    rustup
-    code-cursor
-    blender
-  ];
+  packages = 
+    with pkgs; ([
+      rustup
+      code-cursor
+      blender
+    ] ++ lib.optionals withIDE [
+      # For VSCode and Cursor integration.
+      rustyvulkanCursor
+      rustyvulkanVsCode
+    ]
+  );
 
   shellHook = ''
     echo "--- Welcome to ${pname}! ---"
